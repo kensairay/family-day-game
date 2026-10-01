@@ -15,6 +15,7 @@
     .result{text-align:center;padding-top:26px}.result .trophy{font-size:76px;margin:10px}.result h2{font-size:38px;letter-spacing:-.06em;margin:0 0 8px}.result p{color:#65768a;margin:0 0 22px}.rank{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-bottom:1px solid var(--line);font-weight:800}.rank:last-child{border:0}.rank em{font-style:normal;font-size:24px;margin-right:10px}.rank .points{color:var(--coral)}.pulse{animation:pulse 1.8s infinite}@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
     .confetti{position:absolute;width:10px;height:18px;border-radius:4px;opacity:.8;transform:rotate(22deg)}.c1{background:var(--coral);left:5%;top:18%}.c2{background:var(--mint);right:6%;top:32%;transform:rotate(-18deg)}.c3{background:var(--yellow);left:12%;bottom:18%}.c4{background:var(--navy);right:12%;bottom:11%;transform:rotate(-30deg)}
     @media(min-width:700px){body{display:grid;place-items:center;background:#dce8e5}.shell{width:460px;min-height:820px;background:var(--cream);box-shadow:0 22px 60px rgba(17,38,63,.16);border-radius:28px;margin:24px 0}}
+    .host-panel{margin-top:24px;padding:16px;border:2px dashed var(--coral);border-radius:18px;text-align:left}.host-panel p{margin:0}.host-panel .label{margin-bottom:8px}.secondary{margin-top:18px;min-height:48px;width:100%}button:disabled{opacity:.65}button:focus-visible{outline:3px solid var(--coral);outline-offset:3px}.answer b{flex-shrink:0}.answer span,.rank span{overflow-wrap:anywhere;min-width:0}.rank{gap:12px}.rank .points{white-space:nowrap}.confetti{pointer-events:none}.shell{padding-top:calc(18px + env(safe-area-inset-top));padding-bottom:calc(28px + env(safe-area-inset-bottom));min-height:100svh}.demo-note{margin-top:24px}[hidden]{display:none!important}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
   </style>
 </head>
 <body>
@@ -23,26 +24,156 @@
     <header class="topbar"><div class="brand"><span class="mark">✦</span><span>全員出動！</span></div><span class="tag">10.31 家庭日</span></header>
 
     <section id="join" class="screen active">
-      <div class="hero"><p class="eyebrow">Family day · prototype</p><h1>一起玩，<span>一起拿分。</span></h1><p>掃描 QR Code 後輸入暱稱，和同事、家人組隊挑戰家庭日任務。</p></div>
-      <div class="card"><label class="label" for="nickname">你的暱稱</label><input id="nickname" class="input" maxlength="10" placeholder="例如：小明一家" /><div class="rule">加入遊戲</div><button class="primary" id="joinBtn">加入遊戲　→</button><p class="tiny">Prototype 示範：不需註冊、不需下載 App。正式版可改成活動專屬 QR Code。</p></div>
+      <div class="hero"><p class="eyebrow">Family day · prototype</p><h1>一起玩，<span>一起拿分。</span></h1><p>掃描 QR Code 後輸入暱稱，一人一機，和同事、家人一起挑戰三回合答題。</p></div>
+      <div class="card"><label class="label" for="nickname">你的暱稱</label><input id="nickname" class="input" maxlength="10" placeholder="例如：小明" /><div class="rule">加入遊戲</div><button class="primary" id="joinBtn">加入遊戲　→</button><p class="tiny">本機 Prototype：主持人按鈕與玩家畫面在同一頁，尚未跨手機同步。</p></div>
     </section>
 
-    <section id="waiting" class="screen"><div class="waiting"><p class="eyebrow">已成功加入</p><div class="big-icon pulse">🎈</div><h2>準備好了嗎？</h2><p><strong id="playerName">小隊員</strong>，你已加入<br/>「橘子汽水隊」</p><div class="team"><span class="dot"></span>目前 8 人在線</div><div class="card"><p style="margin:0;color:#617288;line-height:1.6">請看現場大螢幕，主持人即將開始第一回合。<br/><strong style="color:#102033">暖身快問快答</strong></p></div><button class="primary" id="startBtn">先看看遊戲畫面　→</button></div></section>
+    <section id="waiting" class="screen"><div class="waiting"><p class="eyebrow">已成功加入</p><div class="big-icon pulse">🎈</div><h2 tabindex="-1">準備好了嗎？</h2><p><strong id="playerName"></strong>，歡迎參加！</p><div class="card"><p>請看現場大螢幕，等待主持人開始。<br/>共三回合，答對每題固定加 260 分。</p></div><div class="host-panel"><p class="label">主持人操作（本機示範）</p><button class="primary" id="startBtn">開始第一回合 →</button></div></div></section>
 
-    <section id="game" class="screen"><div class="game-head"><div><p class="eyebrow">暖身快問快答</p><h2>第 <span id="qNo">1</span> 題</h2></div><div class="counter"><span id="timer">15</span> 秒</div></div><div class="progress"><i id="progress"></i></div><div class="card"><p class="question" id="question">家庭日最重要的元素是什麼？</p><div class="answers" id="answers"></div><div class="feedback" id="feedback"></div></div><div class="score-strip"><span>目前分數</span><strong id="score">0 分</strong></div></section>
+    <section id="game" class="screen"><div class="game-head"><div><p class="eyebrow" id="roundName"></p><h2 tabindex="-1">第 <span id="qNo">1</span> 題</h2></div><div class="counter">等待主持人揭曉</div></div><div class="progress" aria-hidden="true"><i id="progress"></i></div><div class="card"><p class="question" id="question"></p><div class="answers" id="answers"></div><div class="feedback" id="feedback" role="status" aria-live="polite"></div></div><div class="score-strip"><span>個人累積分數</span><strong id="score">0 分</strong></div><div class="host-panel"><p class="label">主持人操作（本機示範）</p><button class="primary" id="revealBtn">公布答案並計分</button><button class="primary" id="nextBtn" hidden>下一題 →</button></div></section>
 
-    <section id="result" class="screen"><div class="result"><p class="eyebrow">第一回合完成</p><div class="trophy">🏆</div><h2>答得漂亮！</h2><p id="resultCopy">你和橘子汽水隊暫居第 3 名</p><div class="card" style="text-align:left"><div class="rank"><span><em>🥇</em>鳳梨披薩隊</span><span class="points">920</span></div><div class="rank"><span><em>🥈</em>星光隊</span><span class="points">880</span></div><div class="rank"><span><em>🥉</em>橘子汽水隊</span><span class="points">760</span></div></div><button class="primary" id="againBtn">再玩一次　↻</button></div></section>
+    <section id="result" class="screen"><div class="result"><p class="eyebrow">三回合完成</p><div class="trophy">🏆</div><h2 tabindex="-1">答得漂亮！</h2><p id="resultCopy"></p><div class="card" id="leaderboard" style="text-align:left"></div><p class="tiny">這是同一瀏覽器的示範紀錄，並非現場多人排行榜。同分並列，需要決定獲獎名次時請上台決勝。</p><div class="host-panel"><p class="label">主持人登記上台決勝結果（本機示範）</p><label class="label" for="finalRank">本玩家最終名次</label><input class="input" id="finalRank" type="number" min="1" step="1" placeholder="例如：1"/><button class="primary" id="saveRankBtn">登記最終名次</button><p id="rankFeedback" role="status"></p></div><button class="primary" id="againBtn">同一玩家再玩一次 ↻</button><button class="secondary" id="newPlayerBtn">新增示範玩家</button></div></section>
+    <p class="tiny demo-note" id="demoNote" role="status">本機示範：尚未連接伺服器，暱稱與紀錄只在此瀏覽器保存。</p>
   </main>
   <script>
-    const questions=[{q:'家庭日最重要的元素是什麼？',a:['吃得開心','大家一起玩','拍很多照片','以上皆是'],c:3},{q:'如果公司是一種水果，你覺得最像哪一種？',a:['鳳梨：有夠旺','橘子：團團圓圓','西瓜：清爽解渴','香蕉：笑口常開'],c:1},{q:'團隊任務中，最強的超能力是？',a:['溝通合作','跑得最快','記憶力好','幸運值爆表'],c:0}];
-    let qi=0,score=0,timerId=null,answered=false;
-    const $=id=>document.getElementById(id); const show=id=>document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));
-    $('joinBtn').onclick=()=>{const name=$('nickname').value.trim()||'小隊員';$('playerName').textContent=name;show('waiting')};
-    $('startBtn').onclick=()=>{qi=0;score=0;show('game');renderQuestion()};
-    function renderQuestion(){answered=false;const item=questions[qi];$('qNo').textContent=qi+1;$('question').textContent=item.q;$('score').textContent=score+' 分';$('feedback').textContent='';$('progress').style.width=((qi+1)/questions.length*100)+'%';const labels=['A','B','C','D'];$('answers').innerHTML=item.a.map((x,i)=>`<button class="answer" data-i="${i}"><b>${labels[i]}</b><span>${x}</span></button>`).join('');document.querySelectorAll('.answer').forEach(b=>b.onclick=()=>choose(Number(b.dataset.i)));startTimer()}
-    function startTimer(){clearInterval(timerId);let n=15;$('timer').textContent=n;timerId=setInterval(()=>{n--;$('timer').textContent=n;if(n<=0){clearInterval(timerId);if(!answered)choose(-1)}},1000)}
-    function choose(i){if(answered)return;answered=true;clearInterval(timerId);const item=questions[qi];document.querySelectorAll('.answer').forEach((b,n)=>{b.disabled=true;if(n===item.c)b.classList.add('correct');if(n===i&&i!==item.c)b.classList.add('wrong');if(n===i)b.classList.add('selected')});if(i===item.c){score+=260; $('feedback').textContent='答對了！＋260 分'}else{$('feedback').textContent=i===-1?'時間到，下題繼續！':'差一點，正確答案已標示'}$('score').textContent=score+' 分';setTimeout(()=>{qi++;if(qi<questions.length)renderQuestion();else{ $('resultCopy').textContent='你和橘子汽水隊暫居第 3 名';show('result')}},900)}
-    $('againBtn').onclick=()=>show('waiting');
+    const POINTS = 260;
+    const STORAGE_KEY = 'family-day-host-prototype-v1';
+    const rounds = [
+      {name:'第一回合 · 暖身題', questions:[
+        {q:'一年有幾個月？', a:['10 個','11 個','12 個','13 個'], c:2},
+        {q:'紅燈亮起時，行人應該怎麼做？', a:['直接通過','停下等待','閉眼前進','跟著車走'], c:1},
+        {q:'哪一種動物是哺乳類？', a:['蝴蝶','金魚','青蛙','海豚'], c:3}
+      ]},
+      {name:'第二回合 · 生活小知識', questions:[
+        {q:'吃飯前，哪個動作有助保持衛生？', a:['洗手','摸鞋底','玩泥巴','揉眼睛'], c:0},
+        {q:'一星期有幾天？', a:['5 天','6 天','7 天','8 天'], c:2},
+        {q:'哪個物品可以重複使用，減少一次性垃圾？', a:['用完即丟的紙杯','自己的水壺','一次性吸管','一次性塑膠袋'], c:1}
+      ]},
+      {name:'第三回合 · 最後挑戰', questions:[
+        {q:'三角形有幾條邊？', a:['2 條','3 條','4 條','5 條'], c:1},
+        {q:'彩虹常被描述為幾種顏色？', a:['3 種','5 種','7 種','9 種'], c:2},
+        {q:'哪一個是地球的天然衛星？', a:['太陽','火星','金星','月球'], c:3}
+      ]}
+    ];
+    const $ = id => document.getElementById(id);
+    let state = {players:[], currentId:null, round:0, question:0, phase:'join', answer:null};
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && Array.isArray(saved.players) && ['join','waiting','open','revealed','result'].includes(saved.phase)
+          && Number.isInteger(saved.round) && saved.round >= 0 && saved.round < rounds.length
+          && Number.isInteger(saved.question) && saved.question >= 0 && saved.question < rounds[saved.round].questions.length
+          && (saved.answer === null || (Number.isInteger(saved.answer) && saved.answer >= 0 && saved.answer < 4))
+          && saved.players.every(p => typeof p.id === 'string' && typeof p.name === 'string' && Number.isFinite(p.score))
+          && (saved.phase === 'join' || saved.players.some(p => p.id === saved.currentId))) state = saved;
+    } catch { $('demoNote').textContent = '本機示範：無法讀取儲存紀錄，將從新遊戲開始。'; }
+    const player = () => state.players.find(p => p.id === state.currentId);
+    const item = () => rounds[state.round].questions[state.question];
+    function persist() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+      catch { $('demoNote').textContent = '本機示範：瀏覽器無法儲存，重新整理將失去這次進度。'; }
+    }
+    function show(id) {
+      document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === id));
+      const target = $(id).querySelector('h2, input');
+      if (target) target.focus({preventScroll:true});
+      window.scrollTo(0, 0);
+    }
+    function uniqueName(base) {
+      let name = base;
+      while (state.players.some(p => p.name === name)) name = base + '-' + (1000 + Math.floor(Math.random() * 9000));
+      return name;
+    }
+    $('joinBtn').onclick = () => {
+      const name = uniqueName($('nickname').value.trim().slice(0,10) || '小隊員');
+      const id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+      state.players.push({id, name, score:0, completed:false, finalRank:null});
+      state.currentId = id; state.phase = 'waiting'; persist(); render();
+    };
+    $('nickname').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) $('joinBtn').click(); };
+    $('startBtn').onclick = () => {
+      if (state.phase !== 'waiting') return;
+      Object.assign(player(), {score:0, completed:false, finalRank:null});
+      Object.assign(state, {round:0, question:0, phase:'open', answer:null});
+      persist(); render();
+    };
+    function choose(index) {
+      if (state.phase !== 'open' || state.answer !== null) return;
+      state.answer = index; persist(); renderQuestion();
+    }
+    function renderQuestion() {
+      const revealed = state.phase === 'revealed';
+      $('roundName').textContent = rounds[state.round].name;
+      $('qNo').textContent = state.question + 1;
+      $('question').textContent = item().q;
+      $('score').textContent = player().score + ' 分';
+      $('progress').style.width = ((state.round * 3 + state.question + 1) / 9 * 100) + '%';
+      $('answers').replaceChildren();
+      item().a.forEach((text, index) => {
+        const button = document.createElement('button');
+        button.className = 'answer';
+        const label = document.createElement('b'); label.textContent = 'ABCD'[index];
+        const copy = document.createElement('span'); copy.textContent = text;
+        button.append(label, copy);
+        button.disabled = revealed || state.answer !== null;
+        button.classList.toggle('selected', state.answer === index);
+        button.setAttribute('aria-pressed', String(state.answer === index));
+        if (revealed) {
+          button.classList.toggle('correct', index === item().c);
+          button.classList.toggle('wrong', index === state.answer && index !== item().c);
+        }
+        button.onclick = () => choose(index); $('answers').append(button);
+      });
+      $('feedback').textContent = revealed
+        ? (state.answer === item().c ? '答對了！＋' + POINTS + ' 分。' : state.answer === null ? '本題未作答，0 分。' : '本題答錯，0 分。') + ' 正確答案：' + item().a[item().c]
+        : state.answer === null ? '請選擇一個答案，送出後不能更改。' : '已收到（本機示範），等待主持人公布答案。';
+      $('revealBtn').hidden = revealed; $('nextBtn').hidden = !revealed;
+      $('nextBtn').textContent = state.question < 2 ? '下一題 →' : state.round < 2 ? '開始下一回合 →' : '公布最終排行榜 →';
+    }
+    $('revealBtn').onclick = () => {
+      if (state.phase !== 'open') return;
+      state.phase = 'revealed';
+      if (state.answer === item().c) player().score += POINTS;
+      persist(); renderQuestion();
+    };
+    $('nextBtn').onclick = () => {
+      if (state.phase !== 'revealed') return;
+      if (state.question < 2) state.question++;
+      else if (state.round < 2) { state.round++; state.question = 0; }
+      else { state.phase = 'result'; player().completed = true; persist(); render(); return; }
+      state.phase = 'open'; state.answer = null; persist(); render();
+    };
+    function renderResults() {
+      $('resultCopy').textContent = player().name + '，三回合累積 ' + player().score + ' 分！';
+      $('leaderboard').replaceChildren();
+      const entries = state.players.filter(p => p.completed).sort((a,b) => b.score - a.score);
+      let rank = 0;
+      entries.forEach((entry,index) => {
+        if (index === 0 || entry.score !== entries[index-1].score) rank = index + 1;
+        const tied = entries.filter(p => p.score === entry.score).length > 1;
+        const row = document.createElement('div'); row.className = 'rank';
+        const name = document.createElement('span');
+        name.textContent = (tied ? '並列 ' : '') + '第 ' + rank + ' 名 · ' + entry.name + (entry.finalRank ? '（上台決勝：第 ' + entry.finalRank + ' 名）' : '');
+        const points = document.createElement('span'); points.className = 'points'; points.textContent = entry.score + ' 分';
+        row.append(name, points); $('leaderboard').append(row);
+      });
+      $('finalRank').value = player().finalRank || '';
+      $('rankFeedback').textContent = player().finalRank ? '已登記最終名次，答題積分保持不變。' : '';
+    }
+    $('saveRankBtn').onclick = () => {
+      if (state.phase !== 'result') return;
+      const rank = Number($('finalRank').value);
+      if (!Number.isSafeInteger(rank) || rank < 1) { $('rankFeedback').textContent = '請輸入大於 0 的整數名次。'; return; }
+      player().finalRank = rank; persist(); renderResults();
+    };
+    $('againBtn').onclick = () => { state.phase = 'waiting'; persist(); render(); };
+    $('newPlayerBtn').onclick = () => { state.phase = 'join'; state.currentId = null; $('nickname').value = ''; persist(); render(); };
+    function render() {
+      if (state.phase === 'join') show('join');
+      else if (state.phase === 'waiting') { $('playerName').textContent = player().name; show('waiting'); }
+      else if (state.phase === 'result') { renderResults(); show('result'); }
+      else { renderQuestion(); show('game'); }
+    }
+    render();
   </script>
 </body>
 </html>
