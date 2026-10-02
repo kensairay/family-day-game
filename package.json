@@ -1,0 +1,26 @@
+{
+  "name": "family-day-game",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @family/web",
+    "dev": "npm run build && wrangler dev --port 8787",
+    "check": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/worker",
+    "test": "node --experimental-strip-types --test tests/integration/*.test.ts",
+    "test:lobby": "node tests/integration/lobby.http.cjs",
+    "test:browser": "node tests/integration/lobby.e2e.cjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "@types/ws": "^8.18.2",
+    "playwright": "^1.63.0",
+    "typescript": "latest",
+    "vite": "latest",
+    "wrangler": "latest",
+    "ws": "^8.22.0"
+  }
+}

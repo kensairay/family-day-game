@@ -1,0 +1,1 @@
+{"name":"@family/web","private":true,"type":"module","scripts":{"build":"vite build --outDir build"},"dependencies":{"qrcode":"latest"},"devDependencies":{"@types/qrcode":"latest"}}
