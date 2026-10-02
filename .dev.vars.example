@@ -1,2 +1,6 @@
 # 複製成 .dev.vars，填入至少24字元的隨機管理密碼。勿提交此檔。
 ADMIN_SECRET=replace-with-a-long-random-secret
+# 本機不需以下設定。公開部署必須改用Cloudflare secrets存管理密碼與Turnstile secret。
+# PUBLIC_DEPLOYMENT=true
+# TURNSTILE_SITE_KEY=你的公開site-key
+# TURNSTILE_SECRET=你的secret-key（不得提交GitHub）

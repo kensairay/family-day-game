@@ -12,7 +12,7 @@ const assert=require('node:assert/strict');
   await h.getByText('目前 1 人在線／1 人已加入').waitFor();
   const b=await p2.newPage();await b.goto(link);await b.getByLabel('你的暱稱').fill('玩家二');await b.getByRole('button',{name:'加入遊戲'}).click();
   await h.getByText('目前 2 人在線／2 人已加入').waitFor();
-  await a.reload();await a.getByText('玩家一',{exact:true}).waitFor();await h.getByText('目前 2 人在線／2 人已加入').waitFor();
+  await a.reload();await a.locator('#name').filter({hasText:'玩家一'}).waitFor();await h.getByText('目前 2 人在線／2 人已加入').waitFor();
   const duplicate=await p1.newPage();await duplicate.goto(link);await a.getByText('此身分已在其他分頁連線，這個分頁已停止重連。').waitFor();
   await h.getByText('目前 2 人在線／2 人已加入').waitFor();
   await b.close();await h.getByText('目前 1 人在線／2 人已加入').waitFor();
