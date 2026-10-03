@@ -5,7 +5,8 @@ const assert=require('node:assert/strict');
  const host=await browser.newContext();const p1=await browser.newContext();const p2=await browser.newContext();
  try {
   const h=await host.newPage();await h.goto('http://127.0.0.1:8787/?host');
-  await h.getByLabel('管理密碼').fill('local-test-only-very-long-secret');await h.getByRole('button',{name:'建立房間'}).click();
+  await h.getByLabel('管理密碼').fill('local-test-only-very-long-secret');await h.getByRole('button',{name:'登入',exact:true}).click();
+  await h.getByLabel('使用題庫').selectOption('demo');await h.getByRole('button',{name:'建立房間'}).click();
   await h.getByText('目前 0 人在線／0 人已加入').waitFor();
   const link=await h.getByRole('link',{name:'開啟玩家加入頁'}).getAttribute('href');
   const a=await p1.newPage();await a.goto(link);await a.getByLabel('你的暱稱').fill('玩家一');await a.getByRole('button',{name:'加入遊戲'}).click();
@@ -16,7 +17,7 @@ const assert=require('node:assert/strict');
   const duplicate=await p1.newPage();await duplicate.goto(link);await a.getByText('此身分已在其他分頁連線，這個分頁已停止重連。').waitFor();
   await h.getByText('目前 2 人在線／2 人已加入').waitFor();
   await b.close();await h.getByText('目前 1 人在線／2 人已加入').waitFor();
-  const result=await h.evaluate(async()=>{
+  const result=await a.evaluate(async()=>{
    const r=await fetch('/api/rooms',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});return r.status;
   });assert.equal(result,401);
   await h.screenshot({path:'/tmp/family-lobby.png',fullPage:true});

@@ -8,13 +8,16 @@
   ],
   "scripts": {
     "build": "npm run build -w @family/web",
-    "dev": "npm run build && wrangler dev --port 8787",
+    "dev": "npm run build && npm run db:migrate:local && wrangler dev --port 8787",
+    "db:migrate:local": "wrangler d1 migrations apply family-day-game --local",
     "check": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/worker",
-    "test": "npm run test:unit && npm run test:game",
+    "test": "npm run test:unit && npm run test:game && npm run test:admin",
     "test:unit": "node --experimental-strip-types --test tests/integration/*.test.ts",
     "test:game": "node tests/integration/game.local.mjs",
+    "test:admin": "node tests/integration/admin.local.mjs",
     "test:lobby": "node tests/integration/lobby.http.cjs",
-    "test:browser": "node tests/integration/lobby.e2e.cjs"
+    "test:browser": "node tests/integration/lobby.e2e.cjs",
+    "test:admin:browser": "npm run build && node tests/integration/admin.browser.local.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

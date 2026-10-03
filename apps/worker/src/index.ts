@@ -3,11 +3,14 @@ import type { RoomDirectory } from './RoomDirectory.ts';
 import { sampleQuestions, validateQuestions } from './room/engine.ts';
 import { credential, digest, failure, HttpError, json, readJSON } from './security.ts';
 import { nickname, validRoom } from '../../../packages/shared/src/protocol.ts';
+import { adminGate, authorizeAdmin, sessionRoute } from './admin/auth.ts';
+import { bankRoute, publishedQuestions } from './admin/banks.ts';
 export { GameRoom } from './room/GameRoom.ts';
 export { RoomDirectory } from './RoomDirectory.ts';
 export interface Env {
  ROOMS: DurableObjectNamespace<GameRoom>; DIRECTORY: DurableObjectNamespace<RoomDirectory>; ASSETS: Fetcher;
  ADMIN_SECRET?: string; PUBLIC_DEPLOYMENT?: string; TURNSTILE_SECRET?: string; TURNSTILE_SITE_KEY?: string;
+ DB?: D1Database;
 }
 export default {
  async fetch(req: Request, env: Env): Promise<Response> {
@@ -22,10 +25,15 @@ export default {
   }
   try {
    if (!local && (env.PUBLIC_DEPLOYMENT !== 'true' || !env.TURNSTILE_SECRET || !env.TURNSTILE_SITE_KEY)) throw new HttpError(503, '公開部署尚未完成安全設定');
-   if (req.method === 'POST' || url.pathname.endsWith('/socket')) {
+   if (!['GET', 'HEAD'].includes(req.method) || url.pathname.endsWith('/socket')) {
     if (req.headers.get('Origin') !== url.origin) throw new HttpError(403, '來源驗證失敗');
    }
    if (url.pathname === '/api/config' && req.method === 'GET') return json({ turnstileSiteKey: local ? null : env.TURNSTILE_SITE_KEY });
+   if (['/api/admin/login', '/api/admin/logout', '/api/admin/session'].includes(url.pathname)) return await sessionRoute(req, env, local);
+   if (url.pathname.startsWith('/api/admin/')) {
+    await adminGate(req, env, 'admin'); await authorizeAdmin(req, env);
+    return await bankRoute(req, env.DB);
+   }
    const ipHash = await digest(req.headers.get('CF-Connecting-IP') ?? 'local');
    const directory = env.DIRECTORY.get(env.DIRECTORY.idFromName('directory-v1'));
    const gate = async (kind: 'create' | 'join' | 'socket', room?: string) => {
@@ -34,11 +42,16 @@ export default {
    };
    if (url.pathname === '/api/rooms' && req.method === 'POST') {
     await gate('create');
-    if (!env.ADMIN_SECRET || env.ADMIN_SECRET.length < 24 || env.ADMIN_SECRET === 'replace-with-a-long-random-secret') throw new HttpError(503, '尚未設定有效的管理密碼');
-    if (req.headers.get('Authorization') !== `Bearer ${env.ADMIN_SECRET}`) throw new HttpError(401, '管理密碼錯誤');
+    await authorizeAdmin(req, env, true);
     const data = await readJSON(req);
     let questions;
-    try { questions = validateQuestions(data.questions ?? sampleQuestions); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    if (data.bankId !== undefined) {
+     if (data.questions !== undefined) throw new HttpError(400, '不可同時指定題庫與自訂題目');
+     questions = await publishedQuestions(env.DB, data.bankId, data.publishedRevision);
+    } else {
+     if (!local) throw new HttpError(400, '正式環境須選擇已發布題庫');
+     try { questions = validateQuestions(data.questions ?? sampleQuestions); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    }
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const expires = Date.now() + 86400000;
     for (let attempt = 0; attempt < 5; attempt++) {
      const roomId = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => alphabet[b % 32]).join('');

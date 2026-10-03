@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { validRoom, type HostAction, type Snapshot } from '../../../packages/shared/src/protocol.ts';
 import { RoomConnection, type ServerMessage } from './lib/connection.ts';
+import { showAdmin, showHostSetup } from './admin.ts';
 import './style.css';
 
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -172,20 +173,16 @@ async function showJoin() {
   } catch (e) { say((e as Error).message); if (resetChallenge) resetChallenge(); else join.disabled = false; }
  };
 }
-if (isHost) {
+if (params.has('admin')) {
+ showAdmin(panel, say);
+} else if (isHost) {
  const saved = validRoom(room) ? sessionStorage.getItem(`host:${room}`) : null;
  if (saved) enter(saved);
  else {
-  element('h2', '建立遊戲房間'); const key = input('管理密碼', 'password'); key.autocomplete = 'off';
-  element('p', '這輪先使用三回合測試題庫，每回合一題。完整題庫管理後台尚未接上。').className = 'muted';
-  const create = element('button', '建立房間');
-  create.onclick = async () => {
-   create.disabled = true;
-   try {
-    const data = await api('/api/rooms', {}, key.value); key.value = ''; room = data.roomId;
-    sessionStorage.setItem(`host:${room}`, data.hostToken); history.replaceState(null, '', `?host&room=${room}`); enter(data.hostToken);
-   } catch (e) { say((e as Error).message); create.disabled = false; }
-  };
+  showHostSetup(panel, say, data => {
+   room = data.roomId; sessionStorage.setItem(`host:${room}`, data.hostToken);
+   history.replaceState(null, '', `?host&room=${room}`); enter(data.hostToken);
+  });
  }
 } else {
  const saved = validRoom(room) ? localStorage.getItem(`player:${room}`) : null;

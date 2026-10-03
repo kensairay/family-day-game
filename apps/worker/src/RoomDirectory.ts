@@ -7,6 +7,7 @@ export class RoomDirectory extends DurableObject<Env> {
   super(ctx, env);
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, expires INTEGER NOT NULL)');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, start INTEGER NOT NULL, count INTEGER NOT NULL)');
+  ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS admin_sessions (hash TEXT PRIMARY KEY, expires INTEGER NOT NULL, secret_hash TEXT NOT NULL)');
  }
  register(id: string, expires: number): boolean {
   this.prune();
@@ -17,10 +18,21 @@ export class RoomDirectory extends DurableObject<Env> {
   const now = Date.now();
   this.ctx.storage.sql.exec('DELETE FROM rooms WHERE expires<=?', now);
   this.ctx.storage.sql.exec('DELETE FROM limits WHERE start<=?', now - 60000);
+  this.ctx.storage.sql.exec('DELETE FROM admin_sessions WHERE expires<=?', now);
  }
- gate(ipHash: string, kind: 'create' | 'join' | 'socket', room?: string): number {
+ adminSessionCreate(hash: string, expires: number, secretHash: string) {
   this.prune();
-  const limit = kind === 'create' ? 5 : kind === 'join' ? 30 : 90;
+  if (this.ctx.storage.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM admin_sessions').toArray()[0].n >= 100) throw new Error('Too many admin sessions');
+  this.ctx.storage.sql.exec('INSERT INTO admin_sessions VALUES (?,?,?)', hash, expires, secretHash);
+ }
+ adminSessionValid(hash: string, secretHash: string): boolean {
+  this.prune();
+  return !!this.ctx.storage.sql.exec('SELECT hash FROM admin_sessions WHERE hash=? AND secret_hash=?', hash, secretHash).toArray().length;
+ }
+ adminSessionRevoke(hash: string) { this.ctx.storage.sql.exec('DELETE FROM admin_sessions WHERE hash=?', hash); }
+ gate(ipHash: string, kind: 'create' | 'join' | 'socket' | 'login' | 'admin', room?: string): number {
+  this.prune();
+  const limit = kind === 'create' || kind === 'login' ? 5 : kind === 'join' ? 30 : kind === 'admin' ? 120 : 90;
   const key = kind + ':' + ipHash;
   const old = this.ctx.storage.sql.exec<{ start: number; count: number }>('SELECT start,count FROM limits WHERE key=?', key).toArray()[0];
   const { bucket, allowed } = consumeBucket(old, Date.now(), limit, 60000);
