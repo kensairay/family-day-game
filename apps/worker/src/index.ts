@@ -4,7 +4,9 @@ import { sampleQuestions, validateQuestions } from './room/engine.ts';
 import { credential, digest, failure, HttpError, json, readJSON } from './security.ts';
 import { nickname, validRoom } from '../../../packages/shared/src/protocol.ts';
 import { adminGate, authorizeAdmin, sessionRoute } from './admin/auth.ts';
-import { bankRoute, publishedQuestions } from './admin/banks.ts';
+import { bankRoute, publishedBankSnapshot } from './admin/banks.ts';
+import type { BankSource } from '../../../packages/shared/src/results.ts';
+import { resultsRoute } from './admin/results.ts';
 export { GameRoom } from './room/GameRoom.ts';
 export { RoomDirectory } from './RoomDirectory.ts';
 export interface Env {
@@ -32,6 +34,7 @@ export default {
    if (['/api/admin/login', '/api/admin/logout', '/api/admin/session'].includes(url.pathname)) return await sessionRoute(req, env, local);
    if (url.pathname.startsWith('/api/admin/')) {
     await adminGate(req, env, 'admin'); await authorizeAdmin(req, env);
+    if (url.pathname === '/api/admin/results' || url.pathname.startsWith('/api/admin/results/')) return await resultsRoute(req, env);
     return await bankRoute(req, env.DB);
    }
    const ipHash = await digest(req.headers.get('CF-Connecting-IP') ?? 'local');
@@ -45,9 +48,10 @@ export default {
     await authorizeAdmin(req, env, true);
     const data = await readJSON(req);
     let questions;
+    let source: BankSource = { bankId: null, revision: null, title: '本機示範／自訂題庫' };
     if (data.bankId !== undefined) {
      if (data.questions !== undefined) throw new HttpError(400, '不可同時指定題庫與自訂題目');
-     questions = await publishedQuestions(env.DB, data.bankId, data.publishedRevision);
+     const bank = await publishedBankSnapshot(env.DB, data.bankId, data.publishedRevision); questions = bank.questions; source = bank.source;
     } else {
      if (!local) throw new HttpError(400, '正式環境須選擇已發布題庫');
      try { questions = validateQuestions(data.questions ?? sampleQuestions); } catch (e) { throw new HttpError(400, (e as Error).message); }
@@ -58,7 +62,7 @@ export default {
      const hostToken = credential();
      if (!await directory.register(roomId, expires)) continue;
      const response = await env.ROOMS.get(env.ROOMS.idFromName(roomId)).fetch(new Request('https://room/init', {
-      method: 'POST', body: JSON.stringify({ id: roomId, hostHash: await digest(hostToken), expires, questions }),
+      method: 'POST', body: JSON.stringify({ id: roomId, hostHash: await digest(hostToken), expires, questions, source, createdAt: Date.now() }),
      }));
      if (!response.ok) return response;
      return json({ roomId, hostToken, expires }, 201);

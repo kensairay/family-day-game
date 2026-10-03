@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, extname, sep } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { applyMigrations } from './migrations.mjs';
 
 // No production data or Cloudflare account is used. Each run gets a fresh D1/DO runtime.
 const secret = 'local-test-only-very-long-secret';
@@ -23,8 +24,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
  } },
 }));
 try {
- const db = await mf.getD1Database('DB', 'admin-browser-test'); const sql = await readFile('migrations/0001_question_banks.sql', 'utf8');
- await db.batch(sql.split(';').map(s => s.trim()).filter(Boolean).map(s => db.prepare(s)));
+ const db = await mf.getD1Database('DB', 'admin-browser-test'); await applyMigrations(db);
  const url = await mf.ready;
  const result = await promisify(execFile)(process.execPath, ['tests/integration/admin.e2e.cjs'], { env: { ...process.env, TEST_URL: url.origin, TEST_ADMIN_SECRET: secret }, timeout: 60000 });
  process.stdout.write(result.stdout);

@@ -10,6 +10,7 @@ export interface Snapshot {
  online: number; joined: number; questionIndex: number; questionCount: number; deadline: number | null;
  question?: PublicQuestion; self?: Player & { answer?: number; earned?: number }; players?: Player[];
  leaderboard: Standing[];
+ archive?: import('./results.ts').ArchiveStatus;
 }
 export function nickname(value: unknown): string {
  if (typeof value !== 'string') throw new Error('請輸入暱稱');

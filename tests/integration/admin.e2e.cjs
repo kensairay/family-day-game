@@ -41,17 +41,25 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
   await page.getByText('題庫已被其他分頁修改，請重新載入；目前內容未被覆蓋', { exact: true }).waitFor();
   assert.equal(await page.getByLabel('題庫說明（選填）').inputValue(), '本頁尚未儲存');
   await page.getByRole('button', { name: '重新載入草稿', exact: true }).click(); await page.getByText('已載入最新版本。', { exact: true }).waitFor();
-  const host = await context.newPage(); await host.goto(base + '/?host');
+  const host = await context.newPage(); host.on('dialog', d => d.accept()); host.on('pageerror', e => errors.push(e.message)); await host.goto(base + '/?host');
   const bankId = await host.getByLabel('使用題庫').locator('option').filter({ hasText: title }).getAttribute('value');
   await host.getByLabel('使用題庫').selectOption(bankId); await host.getByRole('button', { name: '建立房間', exact: true }).click();
   await host.getByText('目前 0 人在線／0 人已加入', { exact: true }).waitFor();
   await host.getByRole('button', { name: '開始第一回合', exact: true }).click();
   await host.getByRole('heading', { name: '<script>window.injection = true</script> 第1題', exact: true }).waitFor();
   assert.equal(await host.evaluate(() => window.injection), undefined);
+  await host.getByRole('button', { name: '提前結束遊戲', exact: true }).click();
+  await host.getByText('成績已完整歸檔至 D1。', { exact: true }).waitFor();
+  const roomId = new URL(host.url()).searchParams.get('room'); const results = await context.newPage(); results.on('pageerror', e => errors.push(e.message));
+  await results.goto(base + '/?results');
+  await results.locator('.bank-row').filter({ has: results.getByRole('heading', { name: `${title} · ${roomId}`, exact: true }) }).getByRole('button', { name: '查看成績', exact: true }).click();
+  await results.getByRole('heading', { name: `${title}｜${roomId} 完整成績`, exact: true }).waitFor();
+  const downloadEvent = results.waitForEvent('download'); await results.getByRole('button', { name: '匯出 CSV', exact: true }).click();
+  assert.equal((await downloadEvent).suggestedFilename(), `results-${roomId}.csv`);
   await page.getByRole('button', { name: '封存題庫', exact: true }).click(); await page.getByText('題庫已封存。', { exact: true }).waitFor();
   await page.getByRole('button', { name: '登出後台', exact: true }).click(); await page.getByText('已登出，原登入憑證已撤銷。', { exact: true }).waitFor();
   assert.equal(await page.evaluate(async () => (await fetch('/api/admin/banks')).status), 401);
   assert.deepEqual(errors, []);
-  console.log('PASS: 題庫輸入、儲存／發布、重新載入、答案設定、多分頁衝突、XSS字串、主持人選題庫、封存、登出');
+  console.log('PASS: 題庫輸入、儲存／發布、重新載入、答案設定、多分頁衝突、XSS字串、主持人選題庫、成績歸檔／CSV下載、封存、登出');
  } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

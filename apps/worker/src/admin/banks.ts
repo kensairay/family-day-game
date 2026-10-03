@@ -1,5 +1,6 @@
 import type { QuestionBank, BankSummary } from '../../../../packages/shared/src/question-bank.ts';
 import type { Question } from '../../../../packages/shared/src/protocol.ts';
+import type { BankSource } from '../../../../packages/shared/src/results.ts';
 import { validateQuestions } from '../room/engine.ts';
 import { HttpError, json, readJSON } from '../security.ts';
 
@@ -46,13 +47,13 @@ function draft(data: Record<string, unknown>) {
  });
  return { title: data.title.trim(), description: data.description.trim(), questions: JSON.stringify(questions) };
 }
-export async function publishedQuestions(db: D1Database | undefined, id: unknown, version: unknown): Promise<Question[]> {
+export async function publishedBankSnapshot(db: D1Database | undefined, id: unknown, version: unknown): Promise<{ questions: Question[]; source: BankSource }> {
  if (!db) throw new HttpError(503, '尚未設定題庫資料庫');
  if (!bankId(id)) throw new HttpError(400, '題庫識別碼錯誤');
  const row = await get(db, id);
  if (!row.published_questions || row.published_revision === null) throw new HttpError(409, '題庫尚未發布');
  if (row.published_revision !== revision(version)) throw new HttpError(409, '已發布題庫版本已變更，請重新載入後再建立房間');
- return validateQuestions(JSON.parse(row.published_questions));
+ return { questions: validateQuestions(JSON.parse(row.published_questions)), source: { bankId: row.id, revision: row.published_revision, title: row.published_title! } };
 }
 export async function bankRoute(req: Request, db: D1Database | undefined): Promise<Response> {
  if (!db) throw new HttpError(503, '尚未設定題庫資料庫');

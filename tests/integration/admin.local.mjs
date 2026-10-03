@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { applyMigrations } from './migrations.mjs';
 import { build } from 'esbuild';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 
@@ -27,8 +27,7 @@ async function until(predicate) {
 }
 try {
  const db = await mf.getD1Database('DB', 'admin-test');
- const sql = await readFile('migrations/0001_question_banks.sql', 'utf8');
- await db.batch(sql.split(';').map(s => s.trim()).filter(Boolean).map(s => db.prepare(s)));
+ await applyMigrations(db);
  assert.equal((await call('/api/admin/banks')).status, 401);
  assert.equal((await call('/api/admin/banks', 'POST', { title: '入侵' })).status, 401);
  assert.equal((await call('/api/admin/login', 'POST', { password: secret }, undefined, { Origin: 'https://evil.invalid' })).status, 403);

@@ -5,6 +5,7 @@ import { adminLogin, adminRequest, AdminError, el, field, select } from './lib/a
 export function showAdmin(panel: HTMLElement, say: (text: string) => void) {
  document.querySelector('main')?.classList.add('admin-layout');
  el(panel, 'h2', '正式題庫後台'); const host = el(panel, 'a', '前往主持人入口'); host.href = '?host';
+ const results = el(panel, 'a', '活動成績歸檔'); results.href = '?results';
  const auth = el(panel, 'div'); const workspace = el(panel, 'div'); workspace.hidden = true;
  const toolbar = el(workspace, 'div'); toolbar.className = 'actions';
  const reload = el(toolbar, 'button', '重新載入題庫清單'); reload.className = 'secondary';
@@ -110,6 +111,7 @@ export function showAdmin(panel: HTMLElement, say: (text: string) => void) {
 
 export function showHostSetup(panel: HTMLElement, say: (text: string) => void, created: (room: { roomId: string; hostToken: string }) => void) {
  el(panel, 'h2', '建立遊戲房間'); const link = el(panel, 'a', '開啟正式題庫後台'); link.href = '?admin';
+ const results = el(panel, 'a', '活動成績歸檔'); results.href = '?results';
  const auth = el(panel, 'div'); const workspace = el(panel, 'div'); workspace.hidden = true;
  const notice = el(workspace, 'p'); notice.className = 'muted';
  const choice = select(workspace, '使用題庫', [], '');

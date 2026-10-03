@@ -3,6 +3,8 @@ import type { Env } from '../index.ts';
 import { consumeBucket, credential, digest, failure, HttpError, json, readJSON } from '../security.ts';
 import { nickname, validId, type HostAction, type Player, type Question, type Snapshot } from '../../../../packages/shared/src/protocol.ts';
 import { canAnswer, initialState, settleDeadline, standings, transition, type GameState } from './engine.ts';
+import type { ArchiveStatus, ArchiveReason, BankSource } from '../../../../packages/shared/src/results.ts';
+import { ARCHIVE_CHUNK, ARCHIVE_BATCHES, retryDelay, writeArchiveChunk, type ArchiveHeader, type ArchivePlayer } from '../results/writer.ts';
 
 type Attachment = { role: 'host' | 'player'; id: string; closed?: boolean; lease: number };
 type Row = { id: string; nickname: string; activated: number; pendingUntil: number; hash: string };
@@ -13,6 +15,7 @@ const LEASE_MS = 90_000;
 
 export class GameRoom extends DurableObject<Env> {
   private broadcastTimer?: ReturnType<typeof setTimeout>;
+  private archiveInFlight = false;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
@@ -29,6 +32,71 @@ export class GameRoom extends DurableObject<Env> {
   private state(): GameState { return JSON.parse(this.get('state') ?? JSON.stringify(initialState())); }
   private save(state: GameState) { this.set('state', JSON.stringify(state)); }
   private questions(): Question[] { return JSON.parse(this.get('questions') ?? '[]'); }
+  private archiveJob(): (ArchiveStatus & { cutoff: number }) | undefined {
+    const raw = this.get('archive'); return raw ? JSON.parse(raw) : undefined;
+  }
+  archiveStatus(): ArchiveStatus | null {
+    if (!this.get('id')) throw new HttpError(404, '房間不存在');
+    const job = this.archiveJob(); if (!job) return null;
+    const { cutoff: _, ...status } = job; return status;
+  }
+  archiveInfo(): { exists: boolean; archive: ArchiveStatus | null } {
+    return { exists: !!this.get('id'), archive: this.get('id') ? this.archiveStatus() : null };
+  }
+  private queueArchive(state: GameState, reason: ArchiveReason) {
+    if (this.archiveJob()) return;
+    const playerCount = this.ctx.storage.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM players WHERE activated=1').one().n;
+    this.set('archive', JSON.stringify({ id: crypto.randomUUID(), status: 'pending', attempts: 0, nextRetryAt: Date.now() + 25,
+      cursor: 0, playerCount, finalVersion: state.version, endedAt: Date.now(), reason, cutoff: state.revealedThrough }));
+  }
+  private archiveHeader(job: ArchiveStatus & { cutoff: number }): ArchiveHeader {
+    const questions = this.questions();
+    return { id: job.id, roomId: this.get('id')!, source: JSON.parse(this.get('source') ?? '{"bankId":null,"revision":null,"title":"舊版／本機題庫"}') as BankSource,
+      createdAt: Number(this.get('createdAt') ?? 0), startedAt: this.get('startedAt') ? Number(this.get('startedAt')) : null,
+      endedAt: job.endedAt, finalVersion: job.finalVersion, reason: job.reason,
+      scoredQuestionCount: Math.max(0, Math.min(questions.length, job.cutoff + 1)), playerCount: job.playerCount, questions };
+  }
+  private archivePlayers(job: ArchiveStatus & { cutoff: number }): ArchivePlayer[] {
+    const questions = this.questions();
+    const scores = this.ctx.storage.sql.exec<Player & Record<string, SqlStorageValue>>('SELECT p.id,p.nickname,COALESCE(SUM(a.earned),0) AS score FROM players p LEFT JOIN answers a ON a.player=p.id AND a.questionIndex<=? WHERE p.activated=1 GROUP BY p.id', job.cutoff).toArray();
+    return standings(scores).slice(job.cursor, job.cursor + ARCHIVE_CHUNK).map(p => {
+      const answers = this.ctx.storage.sql.exec<Answer>('SELECT * FROM answers WHERE player=? ORDER BY questionIndex', p.id).toArray();
+      const rounds = [0, 0, 0];
+      for (const answer of answers) if (answer.questionIndex <= job.cutoff) rounds[questions[answer.questionIndex].round - 1] += answer.earned;
+      return { playerId: p.id, nickname: p.nickname, rank: p.rank, score: p.score, round1: rounds[0], round2: rounds[1], round3: rounds[2], answered: answers.length,
+        answers: answers.map(a => ({ questionIndex: a.questionIndex, option: a.option, earned: a.earned, counted: a.questionIndex <= job.cutoff, received: a.received })) };
+    });
+  }
+  private async flushArchive() {
+    const queued = this.archiveJob();
+    if (this.archiveInFlight || !queued || queued.status !== 'pending' || (queued.nextRetryAt ?? 0) > Date.now()) return;
+    this.archiveInFlight = true;
+    try {
+      // Persist a safety wake-up before external I/O. A crash after a D1 commit must not strand the outbox.
+      queued.nextRetryAt = Date.now() + 60000; this.set('archive', JSON.stringify(queued)); await this.scheduleAlarm();
+      if (!this.env.DB) throw new Error('D1 unavailable');
+      for (let n = 0; n < ARCHIVE_BATCHES; n++) {
+        const job = this.archiveJob()!; const chunk = this.archivePlayers(job); const final = job.cursor + chunk.length >= job.playerCount;
+        if (chunk.length === 0 && job.cursor < job.playerCount) throw new Error('Archive source missing');
+        const ready = await writeArchiveChunk(this.env.DB, this.archiveHeader(job), chunk, final);
+        if (final && !ready) throw new Error('Incomplete archive');
+        job.cursor = ready ? job.playerCount : job.cursor + chunk.length; job.status = ready ? 'complete' : 'pending'; job.nextRetryAt = ready ? null : Date.now() + 1000;
+        this.set('archive', JSON.stringify(job));
+        if (ready) break;
+      }
+    } catch {
+      // Do not expose/log database errors, questions, credentials, or personal data.
+      const job = this.archiveJob()!; job.attempts++; job.nextRetryAt = Date.now() + retryDelay(job.attempts); this.set('archive', JSON.stringify(job));
+    } finally { this.archiveInFlight = false; }
+  }
+  async retryArchive(): Promise<ArchiveStatus | null> {
+    this.archiveStatus(); const job = this.archiveJob();
+    if (job?.status === 'pending' && !this.archiveInFlight) {
+      this.allow('archive:retry', 3, 60000); job.nextRetryAt = Date.now(); this.set('archive', JSON.stringify(job));
+      await this.flushArchive(); await this.scheduleAlarm();
+    }
+    return this.archiveStatus();
+  }
   private player(id: string): Row | undefined { return this.ctx.storage.sql.exec<Row>('SELECT * FROM players WHERE id=?', id).toArray()[0]; }
   private alive() {
     if (!this.get('id')) throw new HttpError(404, '房間不存在');
@@ -65,13 +133,17 @@ export class GameRoom extends DurableObject<Env> {
   }
   private async scheduleAlarm() {
     const state = this.state();
-    if (state.phase === 'CLOSED') { await this.ctx.storage.deleteAlarm(); return; }
+    const job = this.archiveJob();
+    const terminal = state.phase === 'CLOSED' || Date.now() >= Number(this.get('expires') ?? 0);
+    if (terminal && job?.status !== 'pending') { await this.ctx.storage.deleteAlarm(); return; }
     const pending = this.ctx.storage.sql.exec<{ due: number | null }>('SELECT MIN(pendingUntil) AS due FROM players WHERE activated=0').one().due;
     const leases = this.ctx.getWebSockets().map(ws => ws.deserializeAttachment() as Attachment).filter(a => !a.closed).map(a => a.lease);
-    const candidates = [Number(this.get('expires') ?? Date.now() + 86400000)];
-    if (pending) candidates.push(pending);
-    if (state.phase === 'QUESTION_OPEN' && state.deadline) candidates.push(state.deadline);
-    if (leases.length) candidates.push(Math.min(...leases));
+    const candidates: number[] = [];
+    if (job?.status === 'pending') candidates.push(job.nextRetryAt ?? Date.now() + 1000);
+    if (!terminal) candidates.push(Number(this.get('expires') ?? Date.now() + 86400000));
+    if (!terminal && pending) candidates.push(pending);
+    if (!terminal && state.phase === 'QUESTION_OPEN' && state.deadline) candidates.push(state.deadline);
+    if (!terminal && leases.length) candidates.push(Math.min(...leases));
     const due = Math.max(Date.now() + 25, Math.min(...candidates));
     // Keep an earlier scheduled alarm; it will reconsider all persisted deadlines.
     const existing = await this.ctx.storage.getAlarm();
@@ -94,7 +166,7 @@ export class GameRoom extends DurableObject<Env> {
     return { common, players, playerMap: new Map(players.map(p => [p.id, p])), answers, state };
   }
   private snapshot(a: Attachment, bundle = this.commonSnapshot()): Snapshot {
-    if (a.role === 'host') return { ...bundle.common, players: bundle.players };
+    if (a.role === 'host') return { ...bundle.common, players: bundle.players, ...(this.archiveStatus() ? { archive: this.archiveStatus()! } : {}) };
     const p = bundle.playerMap.get(a.id), answer = bundle.answers.get(a.id);
     return { ...bundle.common, ...(p ? { self: { ...p, ...(answer ? { answer: answer.option,
       ...(bundle.state.revealedThrough >= bundle.state.index ? { earned: answer.earned } : {}) } : {}) } } : {}) };
@@ -113,10 +185,12 @@ export class GameRoom extends DurableObject<Env> {
     try {
       const url = new URL(req.url);
       if (url.pathname === '/init') {
-        const data = await req.json() as { id: string; hostHash: string; expires: number; questions: Question[] };
+        const data = await req.json() as { id: string; hostHash: string; expires: number; questions: Question[]; source?: BankSource; createdAt?: number };
         const created = this.ctx.storage.transactionSync(() => {
           if (this.get('id')) return false;
           this.set('id', data.id); this.set('host', data.hostHash); this.set('expires', String(data.expires));
+          this.set('createdAt', String(data.createdAt ?? Date.now()));
+          this.set('source', JSON.stringify(data.source ?? { bankId: null, revision: null, title: '本機題庫' }));
           this.set('questions', JSON.stringify(data.questions)); this.save(initialState()); return true;
         });
         if (!created) throw new HttpError(409, '房間已存在');
@@ -204,6 +278,9 @@ export class GameRoom extends DurableObject<Env> {
         try { next = transition(state, msg.action as HostAction, this.questions(), Date.now()); } catch (e) { throw new HttpError(409, (e as Error).message); }
       }
       this.save(next);
+      if (msg.action === 'start' && state.phase === 'LOBBY') this.set('startedAt', String(Date.now()));
+      if (next.phase === 'FINISHED') this.queueArchive(next, msg.action === 'end' ? 'ended' : 'completed');
+      if (next.phase === 'CLOSED') this.queueArchive(next, 'closed');
       this.ctx.storage.sql.exec('INSERT INTO commands VALUES (?,?,?,?)', msg.commandId as string, fingerprint, next.version, Date.now());
       return next.version;
     });
@@ -251,10 +328,17 @@ export class GameRoom extends DurableObject<Env> {
   webSocketError(ws: WebSocket) { this.invalidate(ws, 'session.expired'); this.broadcastPresence(); }
   async alarm() {
     if (Date.now() >= Number(this.get('expires') ?? 0)) {
-      this.save({ ...this.state(), phase: 'CLOSED', deadline: null, version: this.state().version + 1 });
+      this.ctx.storage.transactionSync(() => {
+        const state = this.state();
+        const next = state.phase === 'CLOSED' ? state : { ...state, phase: 'CLOSED' as const, deadline: null, version: state.version + 1 };
+        this.save(next); this.queueArchive(next, state.phase === 'FINISHED' ? 'completed' : 'expired');
+      });
       for (const ws of this.ctx.getWebSockets()) this.invalidate(ws, 'room.closed');
-      await this.ctx.storage.deleteAlarm(); return;
+    } else {
+      this.prune(); this.settle();
     }
-    this.prune(); this.settle(); this.broadcast(); await this.scheduleAlarm();
+    await this.flushArchive();
+    if (this.state().phase !== 'CLOSED') this.broadcast();
+    await this.scheduleAlarm();
   }
 }

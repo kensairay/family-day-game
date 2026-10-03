@@ -2,6 +2,7 @@ import QRCode from 'qrcode';
 import { validRoom, type HostAction, type Snapshot } from '../../../packages/shared/src/protocol.ts';
 import { RoomConnection, type ServerMessage } from './lib/connection.ts';
 import { showAdmin, showHostSetup } from './admin.ts';
+import { showResults } from './results.ts';
 import './style.css';
 
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -76,6 +77,10 @@ function render(s: Snapshot) {
  }
  if (isHost) {
   const actions = element('div', '', content); actions.className = 'actions';
+  if (s.archive) {
+   element('p', s.archive.status === 'complete' ? '成績已完整歸檔至 D1。' : `成績等待歸檔（已寫入${s.archive.cursor}／${s.archive.playerCount}人，失敗${s.archive.attempts}次）；關閉房間仍會自動重試。`, content);
+   const archiveLink = element('a', '開啟成績後台', content); archiveLink.href = '?results';
+  }
   if (s.phase === 'LOBBY') action('開始第一回合', 'start', actions);
   if (s.phase === 'ROUND_END') action('開始下一回合', 'start', actions);
   if (s.phase === 'QUESTION_OPEN') action('提前收題', 'close', actions);
@@ -173,7 +178,9 @@ async function showJoin() {
   } catch (e) { say((e as Error).message); if (resetChallenge) resetChallenge(); else join.disabled = false; }
  };
 }
-if (params.has('admin')) {
+if (params.has('results')) {
+ showResults(panel, say);
+} else if (params.has('admin')) {
  showAdmin(panel, say);
 } else if (isHost) {
  const saved = validRoom(room) ? sessionStorage.getItem(`host:${room}`) : null;

@@ -11,10 +11,11 @@
     "dev": "npm run build && npm run db:migrate:local && wrangler dev --port 8787",
     "db:migrate:local": "wrangler d1 migrations apply family-day-game --local",
     "check": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/worker",
-    "test": "npm run test:unit && npm run test:game && npm run test:admin",
+    "test": "npm run test:unit && npm run test:game && npm run test:admin && npm run test:results",
     "test:unit": "node --experimental-strip-types --test tests/integration/*.test.ts",
     "test:game": "node tests/integration/game.local.mjs",
     "test:admin": "node tests/integration/admin.local.mjs",
+    "test:results": "node --experimental-strip-types tests/integration/results.local.mjs",
     "test:lobby": "node tests/integration/lobby.http.cjs",
     "test:browser": "node tests/integration/lobby.e2e.cjs",
     "test:admin:browser": "npm run build && node tests/integration/admin.browser.local.mjs"
