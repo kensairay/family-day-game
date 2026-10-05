@@ -1,6 +1,7 @@
 import type { BankSummary, QuestionBank } from '../../../packages/shared/src/question-bank.ts';
 import type { Question } from '../../../packages/shared/src/protocol.ts';
 import { adminLogin, adminRequest, AdminError, el, field, select } from './lib/admin-api.ts';
+import { questionPreview } from './lib/question-preview.ts';
 
 export function showAdmin(panel: HTMLElement, say: (text: string) => void) {
  document.querySelector('main')?.classList.add('admin-layout');
@@ -12,8 +13,10 @@ export function showAdmin(panel: HTMLElement, say: (text: string) => void) {
  const add = el(toolbar, 'button', '新增題庫');
  const list = el(workspace, 'div'); const editor = el(workspace, 'div'); editor.className = 'bank-editor';
  let current: QuestionBank | undefined, dirty = false, busy = false;
+ let closePreview: (() => void) | undefined;
  let capture: (() => { title: string; description: string; questions: Question[] }) | undefined;
  const login = adminLogin(auth, say, async () => { workspace.hidden = false; await loadList(); }, () => {
+  closePreview?.(); closePreview = undefined;
   workspace.hidden = true; editor.replaceChildren(); list.replaceChildren(); current = undefined; dirty = false; capture = undefined;
  }, () => !busy && discard());
  const fail = (error: unknown) => {
@@ -43,6 +46,7 @@ export function showAdmin(panel: HTMLElement, say: (text: string) => void) {
   finally { busy = false; workspace.inert = false; workspace.removeAttribute('aria-busy'); }
  }
  function renderEditor(values = current ? { title: current.title, description: current.description, questions: current.questions } : { title: '', description: '', questions: [] as Question[] }) {
+  closePreview?.(); closePreview = undefined;
   editor.replaceChildren(); el(editor, 'h3', current ? '編輯草稿' : '新增題庫草稿');
   const note = el(editor, 'p', '草稿可先留白儲存。發布前須填完每題與正確答案，依三回合順序排列，每回合至少一題。修改草稿不影響已發布版本或進行中的遊戲。'); note.className = 'muted';
   const saved = el(editor, 'p', dirty ? '尚有未儲存變更' : '目前無未儲存變更'); saved.dataset.saveStatus = '';
@@ -75,6 +79,8 @@ export function showAdmin(panel: HTMLElement, say: (text: string) => void) {
   });
   capture = () => ({ title: title.value, description: description.value, questions: readQuestions.map(read => read()) });
   const actions = el(editor, 'div'); actions.className = 'actions';
+  const preview = el(actions, 'button', '題庫手機預覽'); preview.className = 'secondary';
+  preview.onclick = () => { if (busy) return; closePreview?.(); const draft = capture!(); closePreview = questionPreview(draft.title, draft.questions); };
   const addQuestion = el(actions, 'button', '新增題目'); addQuestion.className = 'secondary'; addQuestion.disabled = values.questions.length >= 60;
   addQuestion.onclick = () => {
    if (busy || values.questions.length >= 60) return;

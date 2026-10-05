@@ -1,11 +1,11 @@
 const {chromium}=require('playwright');
 const assert=require('node:assert/strict');
 (async()=>{
- const browser=await chromium.launch({headless:true});
+ const browser=await chromium.launch({headless:true,...(process.env.TEST_BROWSER_PATH?{executablePath:process.env.TEST_BROWSER_PATH}:{})});
  const host=await browser.newContext();const p1=await browser.newContext();const p2=await browser.newContext();
  try {
-  const h=await host.newPage();await h.goto('http://127.0.0.1:8787/?host');
-  await h.getByLabel('管理密碼').fill('local-test-only-very-long-secret');await h.getByRole('button',{name:'登入',exact:true}).click();
+  const h=await host.newPage();await h.goto((process.env.TEST_URL||'http://127.0.0.1:8787')+'/?host');
+  await h.getByLabel('管理密碼').fill(process.env.TEST_ADMIN_SECRET||'local-test-only-very-long-secret');await h.getByRole('button',{name:'登入',exact:true}).click();
   await h.getByLabel('使用題庫').selectOption('demo');await h.getByRole('button',{name:'建立房間'}).click();
   await h.getByText('目前 0 人在線／0 人已加入').waitFor();
   const link=await h.getByRole('link',{name:'開啟玩家加入頁'}).getAttribute('href');

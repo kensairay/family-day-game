@@ -44,7 +44,10 @@ export async function sessionRoute(req: Request, env: Env, local: boolean): Prom
   return response;
  }
  if (name === '/api/admin/session' && req.method === 'GET') {
-  await adminGate(req, env, 'admin'); await authorizeAdmin(req, env); return json({ authenticated: true });
+  await adminGate(req, env, 'admin'); await authorizeAdmin(req, env);
+  const expires = await directory(env).adminSessionExpires(await digest(cookie(req)!), await digest(secret(env)));
+  if (expires === null) throw new HttpError(401, '請先登入管理後台');
+  return json({ authenticated: true, expires });
  }
  throw new HttpError(405, '不支援的操作');
 }

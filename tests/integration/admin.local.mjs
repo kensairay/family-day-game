@@ -35,6 +35,8 @@ try {
  const login = await call('/api/admin/login', 'POST', { password: secret }); assert.equal(login.status, 200);
  const setCookie = login.headers.get('Set-Cookie'); assert.match(setCookie, /HttpOnly/); assert.match(setCookie, /SameSite=Strict/); assert.match(setCookie, /Max-Age=3600/);
  const cookie = setCookie.split(';')[0]; assert.equal((await call('/api/admin/session', 'GET', undefined, cookie)).status, 200);
+ const loginInfo = await login.json(); const sessionInfo = await ok('/api/admin/session', 'GET', undefined, cookie);
+ assert.equal(sessionInfo.expires, loginInfo.expires, '前端取得伺服器固定到期時間，重新查詢不展延');
  const publicLogin = await mf.dispatchFetch('https://game.invalid/api/admin/login', { method: 'POST', headers: { Origin: 'https://game.invalid', 'Content-Type': 'application/json', 'CF-Connecting-IP': 'public-test' }, body: JSON.stringify({ password: secret }) });
  assert.equal(publicLogin.status, 200); assert.match(publicLogin.headers.get('Set-Cookie'), /; Secure/);
  const publicCookie = publicLogin.headers.get('Set-Cookie').split(';')[0];

@@ -24,7 +24,7 @@ export async function readJSON(req: Request, maxBytes = 32768): Promise<Record<s
   return value;
  } catch (error) { if (error instanceof HttpError) throw error; throw new HttpError(400, 'JSON格式錯誤'); }
 }
-export const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+export const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
 export const failure = (error: unknown) => json({ error: error instanceof HttpError ? error.message : '操作失敗，請稍後再試' }, error instanceof HttpError ? error.status : 500);
 export interface Bucket { start: number; count: number }
 export function consumeBucket(previous: Bucket | undefined, now: number, limit: number, windowMs: number): { bucket: Bucket; allowed: boolean } {

@@ -48,6 +48,16 @@ try {
  const db = await mf.getD1Database('DB', 'results-test'); await migrate(db, '0001_question_banks.sql');
  assert.equal((await call('/api/admin/results', 'GET', undefined, null)).status, 401);
  const login = await call('/api/admin/login', 'POST', { password: secret }, null); cookie = login.headers.get('Set-Cookie').split(';')[0];
+ for (const [action, method] of [['status', 'GET'], ['retry', 'POST']]) {
+  assert.equal((await call(`/api/admin/results/rooms/ABCDEFG2/${action}`, method, method === 'POST' ? {} : undefined)).status, 404);
+ }
+ assert.equal((await mf.listDurableObjectIds('GameRoom', 'results-test')).length, 0, '後台查詢／重試未知房間不得配置GameRoom');
+ const directory = await mf.unsafeGetDurableObjectStorage('results-test', 'RoomDirectory', { name: 'directory-v1' });
+ await directory.exec("INSERT INTO known_rooms VALUES ('OLDAB234')");
+ await directory.exec("INSERT INTO rooms VALUES ('OLDAB234',0)");
+ await ok('/api/admin/session');
+ assert.equal((await directory.exec("SELECT id FROM rooms WHERE id='OLDAB234'")).length, 0);
+ assert.equal((await directory.exec("SELECT id FROM known_rooms WHERE id='OLDAB234'")).length, 1, '公開目錄到期清理不移除後台歸檔登記');
  const questions = [1, 2, 3].map(round => ({ id: 'result-' + round, round, text: '第' + round + '題', options: ['正確', '錯誤'], correct: 0, seconds: 15, points: round * 10 }));
  let bank = await ok('/api/admin/banks', 'POST', { title: '=1+1', description: '', questions }, 201);
  bank = await ok(`/api/admin/banks/${bank.id}/publish`, 'POST', { revision: bank.revision });
@@ -76,6 +86,9 @@ try {
  await until(async () => (await job(local))?.status === 'complete', '关闭後自動歸檔', 35000);
  const complete = await job(local); assert.equal(complete.id, queued.id); assert.equal(complete.finalVersion, queued.finalVersion);
  const result = await ok('/api/admin/results/' + queued.id);
+ const responseHeaders = await call('/api/admin/results/' + queued.id);
+ assert.equal(responseHeaders.headers.get('Cache-Control'), 'no-store');
+ assert.equal(responseHeaders.headers.get('X-Content-Type-Options'), 'nosniff');
  assert.equal(result.game.reason, 'completed'); assert.equal(result.game.bankId, bank.id); assert.equal(result.game.bankRevision, bank.publishedRevision); assert.equal(result.game.title, '=1+1');
  assert.deepEqual(result.players.map(p => p.score), [60, 60, 0]); assert.deepEqual(result.players.map(p => p.rank), [1, 1, 3]);
  assert.equal(result.players[0].round1, 10); assert.equal(result.players[0].round2, 20); assert.equal(result.players[0].round3, 30);

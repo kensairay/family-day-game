@@ -1,7 +1,7 @@
 import type { ArchiveStatus, ResultSummary, ResultDetail, PlayerResultDetail } from '../../../packages/shared/src/results.ts';
 import { resultReasons } from '../../../packages/shared/src/results.ts';
 import { validRoom } from '../../../packages/shared/src/protocol.ts';
-import { adminLogin, adminRequest, AdminError, el, field } from './lib/admin-api.ts';
+import { adminLogin, adminRequest, adminDownload, AdminError, el, field } from './lib/admin-api.ts';
 
 const time = (value: number | null) => value === null ? '—' : new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', dateStyle: 'short', timeStyle: 'medium' }).format(value);
 export function showResults(panel: HTMLElement, say: (text: string) => void) {
@@ -59,9 +59,7 @@ export function showResults(panel: HTMLElement, say: (text: string) => void) {
   el(details, 'p', `結算：${time(game.endedAt)}（台北）；${resultReasons[game.reason]}。計分${game.scoredQuestionCount}／${game.questionCount}題；發布版本：${game.bankRevision ?? '本機／舊版'}。`);
   const download = el(details, 'button', '匯出 CSV');
   download.onclick = () => run(async () => {
-   const response = await fetch(`/api/admin/results/${game.id}/csv`, { credentials: 'same-origin' });
-   if (!response.ok) throw new AdminError((await response.json()).error ?? '匯出失敗', response.status);
-   const url = URL.createObjectURL(await response.blob()); const a = document.createElement('a'); a.href = url; a.download = `results-${game.roomId}.csv`;
+   const url = URL.createObjectURL(await adminDownload(`/api/admin/results/${game.id}/csv`)); const a = document.createElement('a'); a.href = url; a.download = `results-${game.roomId}.csv`;
    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); say('CSV 已下載，文字欄位已加上試算表公式防護。');
   });
   const scroller = el(details, 'div'); scroller.className = 'table-scroll'; const table = el(scroller, 'table'); table.className = 'results-table';

@@ -26,6 +26,10 @@ const mf = new Miniflare(convertV4MiniflareOptions({
 try {
  const db = await mf.getD1Database('DB', 'admin-browser-test'); await applyMigrations(db);
  const url = await mf.ready;
- const result = await promisify(execFile)(process.execPath, ['tests/integration/admin.e2e.cjs'], { env: { ...process.env, TEST_URL: url.origin, TEST_ADMIN_SECRET: secret }, timeout: 60000 });
- process.stdout.write(result.stdout);
+ for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs']) {
+  const result = await promisify(execFile)(process.execPath, ['tests/integration/' + script], { env: { ...process.env, TEST_URL: url.origin, TEST_ADMIN_SECRET: secret }, timeout: 120000 });
+  process.stdout.write(result.stdout);
+ }
+} catch (error) {
+ process.stderr.write(error.stderr || error.message); process.exitCode = 1;
 } finally { await mf.dispose(); }

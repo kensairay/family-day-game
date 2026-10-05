@@ -27,6 +27,8 @@ export async function resultsRoute(req: Request, env: Env): Promise<Response> {
   if (!validRoom(room)) throw new HttpError(400, '請輸入8碼房間代碼');
   if (req.method !== (action === 'status' ? 'GET' : 'POST')) throw new HttpError(405, '不支援的操作');
   if (action === 'retry') await readJSON(req, 4096);
+  const directory = env.DIRECTORY.get(env.DIRECTORY.idFromName('directory-v1'));
+  if (!await directory.hasRoom(room)) throw new HttpError(404, '房間不存在');
   const object = env.ROOMS.get(env.ROOMS.idFromName(room)); const info = await object.archiveInfo();
   if (!info.exists) throw new HttpError(404, '房間不存在');
   if (action === 'retry') {

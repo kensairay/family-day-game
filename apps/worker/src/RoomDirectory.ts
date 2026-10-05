@@ -6,14 +6,20 @@ export class RoomDirectory extends DurableObject<Env> {
  constructor(ctx: DurableObjectState, env: Env) {
   super(ctx, env);
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, expires INTEGER NOT NULL)');
+  ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS known_rooms (id TEXT PRIMARY KEY)');
+  ctx.storage.sql.exec('INSERT OR IGNORE INTO known_rooms SELECT id FROM rooms');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, start INTEGER NOT NULL, count INTEGER NOT NULL)');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS admin_sessions (hash TEXT PRIMARY KEY, expires INTEGER NOT NULL, secret_hash TEXT NOT NULL)');
  }
  register(id: string, expires: number): boolean {
   this.prune();
-  if (this.ctx.storage.sql.exec('SELECT id FROM rooms WHERE id=?', id).toArray().length) return false;
-  this.ctx.storage.sql.exec('INSERT INTO rooms VALUES (?,?)', id, expires); return true;
+  if (this.hasRoom(id)) return false;
+  this.ctx.storage.transactionSync(() => {
+   this.ctx.storage.sql.exec('INSERT INTO known_rooms VALUES (?)', id);
+   this.ctx.storage.sql.exec('INSERT INTO rooms VALUES (?,?)', id, expires);
+  }); return true;
  }
+ hasRoom(id: string): boolean { return !!this.ctx.storage.sql.exec('SELECT id FROM known_rooms WHERE id=?', id).toArray().length; }
  private prune() {
   const now = Date.now();
   this.ctx.storage.sql.exec('DELETE FROM rooms WHERE expires<=?', now);
@@ -26,8 +32,11 @@ export class RoomDirectory extends DurableObject<Env> {
   this.ctx.storage.sql.exec('INSERT INTO admin_sessions VALUES (?,?,?)', hash, expires, secretHash);
  }
  adminSessionValid(hash: string, secretHash: string): boolean {
+  return this.adminSessionExpires(hash, secretHash) !== null;
+ }
+ adminSessionExpires(hash: string, secretHash: string): number | null {
   this.prune();
-  return !!this.ctx.storage.sql.exec('SELECT hash FROM admin_sessions WHERE hash=? AND secret_hash=?', hash, secretHash).toArray().length;
+  return this.ctx.storage.sql.exec<{ expires: number }>('SELECT expires FROM admin_sessions WHERE hash=? AND secret_hash=?', hash, secretHash).toArray()[0]?.expires ?? null;
  }
  adminSessionRevoke(hash: string) { this.ctx.storage.sql.exec('DELETE FROM admin_sessions WHERE hash=?', hash); }
  gate(ipHash: string, kind: 'create' | 'join' | 'socket' | 'login' | 'admin', room?: string): number {
