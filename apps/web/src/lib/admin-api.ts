@@ -55,7 +55,10 @@ export function adminLogin(parent: HTMLElement, say: (text: string) => void, aut
  const submit = el(form, 'button', '登入'); submit.type = 'submit';
  const note = el(box, 'p', '登入有效一小時；管理密碼不會存入瀏覽器儲存空間。'); note.className = 'muted';
  const logout = el(box, 'button', '登出後台'); logout.className = 'secondary'; logout.hidden = true;
- let busy = false, expiryTimer: ReturnType<typeof setTimeout> | undefined;
+ // Finish the initial session probe before allowing a new login. A late 401
+ // otherwise invalidates a login already in flight on a slower connection.
+ let busy = true, expiryTimer: ReturnType<typeof setTimeout> | undefined;
+ submit.disabled = true;
  const signedIn = async ({ expires }: { expires: number }) => {
   clearTimeout(expiryTimer);
   if (!Number.isFinite(expires) || expires <= Date.now()) { clearSession(); return; }
@@ -75,6 +78,7 @@ export function adminLogin(parent: HTMLElement, say: (text: string) => void, aut
   try { await adminRequest('/api/admin/logout', 'POST', {}); clearSession(true); say('已登出，原登入憑證已撤銷。'); }
   catch (error) { say((error as Error).message); } finally { logout.disabled = false; }
  };
- void adminRequest<{ expires: number }>('/api/admin/session').then(signedIn).catch(error => { if (!(error instanceof AdminError && error.status === 401)) say(error.message); });
+ void adminRequest<{ expires: number }>('/api/admin/session').then(signedIn).catch(error => { if (!(error instanceof AdminError && error.status === 401)) say(error.message); })
+  .finally(() => { busy = false; submit.disabled = false; });
  return { reauthenticate: () => clearSession() };
 }

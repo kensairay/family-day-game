@@ -10,8 +10,17 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
  page.on('dialog', d => d.accept());
  const title = 'E2E題庫-' + Date.now();
  try {
+  // Exercise slow initial session lookup: login must wait for this probe.
+  let initialSession = true;
+  await page.route('**/api/admin/session', async route => {
+   if (initialSession) { initialSession = false; await new Promise(resolve => setTimeout(resolve, 400)); }
+   await route.continue();
+  });
   await page.goto(base + '/?admin');
-  await page.getByLabel('管理密碼').fill(secret); await page.getByRole('button', { name: '登入', exact: true }).click();
+  await page.getByLabel('管理密碼').fill(secret);
+  const loginResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/admin/login' && response.request().method() === 'POST');
+  await page.getByRole('button', { name: '登入', exact: true }).click();
+  assert.equal((await loginResponse).status(), 200, '管理員登入應成功');
   await page.getByRole('button', { name: '新增題庫', exact: true }).click();
   if (remote) {
    const cookie = (await context.cookies(base + '/api/admin/session')).find(item => item.name === 'family_admin');
