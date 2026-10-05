@@ -2,6 +2,8 @@
 
 更新：2026-10-05。A版；Cloudflare部署授權已設定，已建立獨立Staging Worker、Durable Objects與D1並套用兩份migration。測試網址為 https://family-day-game-staging.ompstw.workers.dev 。各版本的遠端驗收結果以GitHub Actions摘要為準；部署成功不等於全部驗收通過。
 
+本次遠端驗收於2026-10-05 13:47（台北時間）全部通過。部署程式版本為 `b52636aef77df48dab2393253111f8fe75b79675`，Worker版本為 `0cda1da2-ebc7-40a7-83ae-87555035432f`。[GitHub Actions驗收紀錄](https://github.com/kensairay/family-day-game/actions/runs/37269146690)的acceptance與staging兩項工作均成功，JSON驗收報告保存至2026-10-12。真實手機、正式Turnstile及350連線壓測仍待執行。
+
 ## 你需要完成的一次設定
 
 這一段需要你的帳號操作；API Token和密碼請只存進GitHub Secrets，不要貼在對話或提交程式碼。
@@ -62,11 +64,11 @@ Staging使用Cloudflare官方dummy Turnstile金鑰，讓自動瀏覽器穩定測
 
 | 項目 | 自動驗收 |
 |---|---|
-| HTTPS正常連線、HTTP拒絕或轉HTTPS、CSP／nosniff | 遠端腳本已準備，待部署執行 |
-| 未登入管理API、跨來源寫入、未知房間拒絕 | 遠端腳本已準備；隔離測試通過 |
-| 草稿手機預覽／發布／多分頁版本衝突／XSS文字 | 隔離Chromium測試；遠端待執行 |
-| 兩位320／430 px玩家三回合、重載保留答案、公布前保密、排名／作答明細／CSV | 隔離Chromium測試；遠端待執行 |
-| 大廳分頁取代／離線人數、關閉房間後歸檔 | 隔離Chromium測試；遠端待執行 |
+| HTTPS正常連線、HTTP拒絕或轉HTTPS、CSP／nosniff | 遠端通過 |
+| 未登入管理API、跨來源寫入、未知房間拒絕 | 隔離及遠端通過 |
+| 草稿手機預覽／發布／多分頁版本衝突／XSS文字 | 隔離及遠端Chromium通過 |
+| 兩位320／430 px玩家三回合、重載保留答案、公布前保密、排名／作答明細／CSV | 隔離及遠端Chromium通過 |
+| 大廳分頁取代／離線人數、關閉房間後歸檔 | 隔離及遠端Chromium通過 |
 | 真正Turnstile、iPhone／Android、Safari／Firefox、行動網路 | 需另做驗收；本流程不冒充真人解驗證 |
 | 350條真實WebSocket／現場共用網路NAT | 另行壓測；350人×60題資料量測試不等於連線壓測 |
 
