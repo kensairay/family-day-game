@@ -6,6 +6,21 @@
 
 後續更新：2026-10-05 14:04，手機試玩回報的測試程式文字已修正，部署程式版本為 `06635094e4f1fed8fba89adc5384279275cf2ba5`，[最新自動驗收](https://github.com/kensairay/family-day-game/actions/runs/37270392964)全部通過。使用者已開始手機實測；完整跨裝置、正式Turnstile及350連線驗收仍待完成。下一步見 [開發計畫](../開發計畫與下一步-2026-10-05.md)。
 
+## 主持人連線修正（2026-10-05）
+
+使用者回報新房間建立後停在「讀取房間狀態中」，截圖同時顯示連線中斷。可以確認未收到房間快照；沒有使用者瀏覽器的Console／Network記錄，無法斷定該次握手被CSP、現場網路或其他環境因素阻擋。
+
+修正程式版本：`7c1b99f10fae9c119d0a06e3357dcb04639eadca`。[本次驗收](https://github.com/kensairay/family-day-game/actions/runs/37285972064)。
+
+- CSP明確允許本站的`wss://`（本機為`ws://`並保留port），不開放任意WebSocket站台。MDN說明部分瀏覽器不會將`connect-src 'self'`視為允許WebSocket：[connect-src](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/connect-src)。
+- 修正握手失敗時`connectedAt=0`讓重試預算持續重設的錯誤。最多重試五次；必須成功連線、收到快照且穩定超過一分鐘，才重設預算。
+- 十秒內未建立連線或取得初始快照會進入恢復流程；只有收到快照才開放遊戲控制。初始讀取文字會隨連線狀態更新。
+- 握手失敗時透過同來源HTTPS的`POST /api/rooms/:id/connection`檢查房間與憑證。必須有原本的主持人／玩家憑證，且保留Origin、HTTPS、房間存在與IP限流；不洩漏題庫、答案或玩家資料，不取代現有工作階段、不啟用玩家、不延長租約。
+- 房間不存在／到期、憑證失效、尚未完成加入、來源錯誤、限流會明確顯示並停止重試。房間與身分有效但即時連線仍失敗時，提示在同分頁換網路後重新整理。
+- 不修改使用者題庫、既有房間的題目快照或Prototype。沒有HTTP輪詢遊戲替代路徑；若現場網路封鎖WebSocket，仍需換網路或調整該網路設定。
+
+本機型別、建置、17項單元測試、遊戲／題庫／D1歸檔／HTTPS安全整合測試通過。GitHub隔離瀏覽器驗收通過，包含Chromium及WebKit的六題、三回合、主持人開始／重載、玩家600分及D1歸檔，另模擬握手中斷並確認錯誤文字取代初始讀取狀態。遠端HTTPS驗收於2026-10-05 16:52:54（台北時間）全部通過；部署於16:52:12完成。本次acceptance與staging兩項工作均成功。真實裝置及使用者現場網路仍需確認。
+
 ## 你需要完成的一次設定
 
 這一段需要你的帳號操作；API Token和密碼請只存進GitHub Secrets，不要貼在對話或提交程式碼。
@@ -27,7 +42,7 @@
 
 ## 自動流程會做什麼
 
-1. 在GitHub執行型別、14項單元測試、遊戲／題庫／歸檔／HTTPS安全整合測試與兩套隔離瀏覽器驗收，再做Wrangler部署dry-run。
+1. 在GitHub執行型別、17項單元測試、遊戲／題庫／歸檔／HTTPS安全整合測試與三套隔離瀏覽器驗收（Chromium及WebKit），再做Wrangler部署dry-run。
 2. 檢查三項連線設定。缺少或格式不符時只顯示缺少的設定名稱，略過實際部署；不輸出秘密值。
 3. 讀取帳號workers.dev子網域；建立或重用名稱恰為 **family-day-game-staging** 的D1，填入真正UUID及指定hostname。根目錄wrangler.jsonc的本機設定不會被覆蓋。
 4. 在該Staging D1套用0001、0002 migration。已套用的migration不重複執行；沒有DROP或清空資料步驟。
@@ -73,7 +88,8 @@ Staging使用Cloudflare官方dummy Turnstile金鑰，讓自動瀏覽器穩定測
 | 草稿手機預覽／發布／多分頁版本衝突／XSS文字 | 隔離及遠端Chromium通過 |
 | 兩位320／430 px玩家三回合、重載保留答案、公布前保密、排名／作答明細／CSV | 隔離及遠端Chromium通過 |
 | 大廳分頁取代／離線人數、關閉房間後歸檔 | 隔離及遠端Chromium通過 |
-| 真正Turnstile、iPhone／Android、Safari／Firefox、行動網路 | 需另做驗收；本流程不冒充真人解驗證 |
+| 六題題庫主持人開始／重載、三回合600分、連線失敗提示 | 隔離及遠端Chromium／WebKit通過 |
+| 真正Turnstile、iPhone／Android、Safari／Firefox實機、行動網路 | 需另做驗收；本流程不冒充真人解驗證 |
 | 350條真實WebSocket／現場共用網路NAT | 另行壓測；350人×60題資料量測試不等於連線壓測 |
 
 若驗收失敗，腳本會將該次結果標為failed，不宣稱Staging已可用，也不自動清空D1或刪除DO。需修正原因後重跑。
