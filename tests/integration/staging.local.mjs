@@ -26,6 +26,9 @@ async function ok(path, method, data, status = 200) { const response = await cal
 try {
  await applyMigrations(await mf.getD1Database('DB', 'staging-security-test'));
  const config = await ok('/api/config'); assert.equal(config.environment, 'staging'); assert.equal(config.turnstileMode, 'test'); assert.equal(config.deploymentRevision, 'test-revision');
+ const asset = await call('/');
+ assert.match(asset.headers.get('Content-Security-Policy'), new RegExp(`connect-src 'self' wss://${host.replaceAll('.', '\\.')};`));
+ assert.equal(asset.headers.get('Content-Security-Policy').includes('wss:;'), false, '不開放任意WebSocket站台');
  assert.equal((await call('/api/admin/banks')).status, 401);
  const login = await call('/api/admin/login', 'POST', { password: bindings.ADMIN_SECRET }); assert.equal(login.status, 200);
  assert.match(login.headers.get('Set-Cookie'), /; Secure/); cookie = login.headers.get('Set-Cookie').split(';')[0];
@@ -33,9 +36,19 @@ try {
  const bank = await ok('/api/admin/banks', 'POST', { title: 'Staging測試', description: '', questions }, 201);
  const published = await ok(`/api/admin/banks/${bank.id}/publish`, 'POST', { revision: bank.revision });
  const room = await ok('/api/rooms', 'POST', { bankId: bank.id, publishedRevision: published.publishedRevision }, 201);
+ const diagnostic = (token, origin = base, code = room.roomId) => mf.dispatchFetch(base + `/api/rooms/${code}/connection`, {
+  method: 'POST', headers: { Origin: origin, ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+ });
+ for (const token of [undefined, 'a'.repeat(72)]) assert.equal((await diagnostic(token)).status, 401);
+ assert.equal((await diagnostic(room.hostToken, 'https://other.example')).status, 403);
+ assert.equal((await diagnostic(room.hostToken, base, 'ABCDEFG2')).status, 404);
+ const health = await diagnostic(room.hostToken);
+ assert.equal(health.status, 200); assert.equal(health.headers.get('Cache-Control'), 'no-store');
+ assert.deepEqual(await health.json(), { ok: true, role: 'host' }, '診斷不洩漏題目、答案、憑證或玩家資料');
  assert.equal((await call(`/api/rooms/${room.roomId}/join`, 'POST', { nickname: '無token' })).status, 403);
  assert.equal((await call(`/api/rooms/${room.roomId}/join`, 'POST', { nickname: '錯token', challenge: 'bad' })).status, 403);
- await ok(`/api/rooms/${room.roomId}/join`, 'POST', { nickname: '測試玩家', challenge: 'XXXX.DUMMY.TOKEN.XXXX' }, 201);
+ const player = await ok(`/api/rooms/${room.roomId}/join`, 'POST', { nickname: '測試玩家', challenge: 'XXXX.DUMMY.TOKEN.XXXX' }, 201);
+ assert.deepEqual(await (await diagnostic(player.playerToken)).json(), { ok: true, role: 'player' });
  assert.equal(validations, 2, '有效與無效token都送Siteverify，無token不送');
  // Existing rooms keep their stored question version, but old synthetic E2E
  // script literals must no longer appear in host/player snapshots.
@@ -52,11 +65,17 @@ try {
   ws.addEventListener('message', listener);
  });
  const initial = snapshot(); ws.accept(); const lobby = await initial;
+ assert.deepEqual(await (await diagnostic(legacyRoom.hostToken, base, legacyRoom.roomId)).json(), { ok: true, role: 'host' });
  const opened = snapshot('QUESTION_OPEN');
  ws.send(JSON.stringify({ protocol: 1, type: 'host.command', action: 'start', commandId: crypto.randomUUID(), expectedVersion: lobby.version }));
- const display = await opened; ws.close();
+ const display = await opened;
  assert.equal(display.question.text, '第1題'); assert.equal(display.question.id, 'legacy-1'); assert.equal(display.question.points, 260);
  assert.deepEqual((await ok(`/api/admin/banks/${legacy.id}`)).questions, legacyQuestions, '保留原始題庫版本');
+ const closed = snapshot('CLOSED');
+ ws.send(JSON.stringify({ protocol: 1, type: 'host.command', action: 'closeRoom', commandId: crypto.randomUUID(), expectedVersion: display.version }));
+ await closed;
+ assert.equal((await diagnostic(legacyRoom.hostToken, base, legacyRoom.roomId)).status, 410, '關閉後診斷應停止重試');
+ ws.close();
  assert.equal((await mf.dispatchFetch('http://' + host + '/api/config')).status, 403);
 } finally { await mf.dispose(); }
 for (const config of [{ ...bindings, DEPLOYMENT_ENV: 'production' }, { ...bindings, STAGING_HOSTNAME: 'other.workers.dev' }, { ...bindings, TURNSTILE_MODE: 'real' }]) {

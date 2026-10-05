@@ -154,6 +154,7 @@ function enter(token: string) {
  content = element('div'); element('p', '讀取房間狀態中…', content);
  connection = new RoomConnection(room, token, receive, (connected, text) => {
   online = connected; if (!connected) pendingCommand = undefined; say(text); controls();
+  if (!snapshot) content.textContent = text;
  });
  connection.open();
 }

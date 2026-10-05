@@ -22,7 +22,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
-      - run: npx playwright install --with-deps --only-shell chromium
+      - run: npx playwright install --with-deps --only-shell chromium webkit
       - run: npm run test:admin:browser
       - run: node node_modules/wrangler/bin/wrangler.js deploy --dry-run --config wrangler.staging.json --outdir /tmp/staging-dry-run
   staging:
@@ -54,7 +54,7 @@ jobs:
       - if: steps.connection.outputs.ready == 'true'
         run: npm ci
       - if: steps.connection.outputs.ready == 'true'
-        run: npx playwright install --with-deps --only-shell chromium
+        run: npx playwright install --with-deps --only-shell chromium webkit
       - if: steps.connection.outputs.ready == 'true'
         run: npm run build
       - name: Deploy isolated Staging Worker and D1

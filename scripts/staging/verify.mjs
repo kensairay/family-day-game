@@ -28,7 +28,9 @@ try {
  });
  await check('網頁CSP／nosniff與HTTP拒絕或HTTPS轉址', async () => {
   const response = await request('/'); expect(response.ok, '網頁讀取失敗');
-  expect(response.headers.get('Content-Security-Policy')?.includes("frame-ancestors 'none'"), '缺少CSP');
+  const csp = response.headers.get('Content-Security-Policy');
+  expect(csp?.includes("frame-ancestors 'none'"), '缺少CSP');
+  expect(csp?.includes(`connect-src 'self' ${origin.replace('https:', 'wss:')};`), '未明確允許本站WebSocket');
   expect(response.headers.get('X-Content-Type-Options') === 'nosniff', '缺少nosniff');
   const insecure = await fetch(origin.replace('https:', 'http:') + '/api/config', { redirect: 'manual', signal: AbortSignal.timeout(15000) });
   if (insecure.status !== 403) {
@@ -51,7 +53,7 @@ try {
  // Do not pass the Cloudflare deployment token into browser tests.
  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('CLOUDFLARE_') && !['STAGING_ADMIN_SECRET', 'GH_TOKEN', 'GITHUB_TOKEN'].includes(name)));
  env.TEST_URL = origin; env.TEST_ADMIN_SECRET = secret;
- for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs']) await check(script === 'admin.e2e.cjs' ? '遠端題庫／三回合／正解保密／D1成績／CSV／工作階段驗收' : '遠端大廳同步／分頁取代／斷線恢復驗收', async () => {
+ for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs', 'connection.e2e.cjs']) await check(script === 'admin.e2e.cjs' ? '遠端題庫／三回合／正解保密／D1成績／CSV／工作階段驗收' : script === 'lobby.e2e.cjs' ? '遠端大廳同步／分頁取代／斷線恢復驗收' : 'Chromium／WebKit六題題庫連線與錯誤提示驗收', async () => {
   const output = await promisify(execFile)(process.execPath, ['tests/integration/' + script], { env, timeout: 180000, maxBuffer: 1024 * 1024 });
   process.stdout.write(clean(output.stdout));
  });
@@ -60,5 +62,5 @@ try {
  report.status = 'failed'; report.error = clean(error.stderr || error.message); console.error(report.error); process.exitCode = 1;
 } finally {
  report.finishedAt = new Date().toISOString(); await writeFile('staging-acceptance.generated.json', JSON.stringify(report, null, 2) + '\n');
- if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `\n## 遠端HTTPS驗收：${report.status === 'passed' ? '通過' : '失敗'}\n\n${results.map(item => '- 通過：' + item.name).join('\n')}\n\n這是桌面Chromium模擬手機尺寸；真實手機、真實Turnstile與350連線壓測仍待驗收。\n`);
+ if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `\n## 遠端HTTPS驗收：${report.status === 'passed' ? '通過' : '失敗'}\n\n${results.map(item => '- 通過：' + item.name).join('\n')}\n\n這是桌面Chromium／WebKit（含模擬手機尺寸）；真實手機、真實Turnstile與350連線壓測仍待驗收。\n`);
 }

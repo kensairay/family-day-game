@@ -23,7 +23,10 @@ export default {
   if (!local && url.protocol !== 'https:') return json({ error: '需要HTTPS連線' }, 403);
   if (!url.pathname.startsWith('/api/')) {
    const asset = await env.ASSETS.fetch(req); const headers = new Headers(asset.headers);
-   headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+   // Explicitly allow only this site's WebSocket origin. Some browsers do not
+   // include ws/wss in connect-src 'self'. Keep the port for local development.
+   const socketOrigin = `${url.protocol === 'https:' ? 'wss:' : 'ws:'}//${url.host}`;
+   headers.set('Content-Security-Policy', `default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self'; img-src 'self' data:; connect-src 'self' ${socketOrigin}; frame-src https://challenges.cloudflare.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`);
    headers.set('X-Content-Type-Options', 'nosniff'); headers.set('Referrer-Policy', 'no-referrer');
    return new Response(asset.body, { status: asset.status, headers });
   }
@@ -72,9 +75,14 @@ export default {
     }
     throw new HttpError(503, '請稍後再建立房間');
    }
-   const match = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(join|socket)$/);
+   const match = url.pathname.match(/^\/api\/rooms\/([^/]+)\/(join|socket|connection)$/);
    if (!match || !validRoom(match[1])) throw new HttpError(404, '找不到房間');
    const [, room, action] = match;
+   if (action === 'connection') {
+    if (req.method !== 'POST') throw new HttpError(405, '不支援的操作');
+    await gate('socket', room);
+    return env.ROOMS.get(env.ROOMS.idFromName(room)).fetch(req);
+   }
    if (action === 'join') {
     if (req.method !== 'POST') throw new HttpError(405, '不支援的操作');
     await gate('join', room);

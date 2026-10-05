@@ -216,8 +216,9 @@ export class GameRoom extends DurableObject<Env> {
         await this.scheduleAlarm(); return json({ playerId: id, playerToken: token, nickname: name, pendingSeconds: 60 }, 201);
       }
       const protocols = req.headers.get('Sec-WebSocket-Protocol')?.split(',').map(p => p.trim()) ?? [];
-      const token = protocols.find(p => p.startsWith('auth.'))?.slice(5);
-      if (!token || !/^[a-f0-9-]{72}$/.test(token) || !protocols.includes('family.v1')) throw new HttpError(401, '需要有效連線憑證');
+      const diagnostic = url.pathname.endsWith('/connection');
+      const token = diagnostic ? req.headers.get('Authorization')?.match(/^Bearer ([a-f0-9-]{72})$/)?.[1] : protocols.find(p => p.startsWith('auth.'))?.slice(5);
+      if (!token || !/^[a-f0-9-]{72}$/.test(token) || (!diagnostic && !protocols.includes('family.v1'))) throw new HttpError(401, '需要有效連線憑證');
       const hash = await digest(token); this.alive(); this.prune();
       let a: Attachment;
       if (hash === this.get('host')) a = { role: 'host', id: 'host', lease: Date.now() + LEASE_MS };
@@ -227,6 +228,9 @@ export class GameRoom extends DurableObject<Env> {
         if (!p.activated && this.state().phase !== 'LOBBY') throw new HttpError(409, '遊戲已開始，名額尚未完成確認');
         a = { role: 'player', id: p.id, lease: Date.now() + LEASE_MS };
       }
+      // Diagnose failed upgrades over HTTPS without replacing a session,
+      // activating a player, renewing a lease, or exposing room contents.
+      if (diagnostic) return json({ ok: true, role: a.role });
       this.allow('reconnect:' + a.id, 6, 60_000);
       for (const ws of this.ctx.getWebSockets()) {
         const old = ws.deserializeAttachment() as Attachment;

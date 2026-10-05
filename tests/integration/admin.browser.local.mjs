@@ -26,7 +26,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({
 try {
  const db = await mf.getD1Database('DB', 'admin-browser-test'); await applyMigrations(db);
  const url = await mf.ready;
- for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs']) {
+ for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs', 'connection.e2e.cjs']) {
   const result = await promisify(execFile)(process.execPath, ['tests/integration/' + script], { env: { ...process.env, TEST_URL: url.origin, TEST_ADMIN_SECRET: secret, TEST_USE_PUBLISHED_BANK: 'true' }, timeout: 120000 });
   process.stdout.write(result.stdout);
  }
