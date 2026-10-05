@@ -3,6 +3,7 @@ import type { Env } from '../index.ts';
 import { consumeBucket, credential, digest, failure, HttpError, json, readJSON } from '../security.ts';
 import { nickname, validId, type HostAction, type Player, type Question, type Snapshot } from '../../../../packages/shared/src/protocol.ts';
 import { canAnswer, initialState, settleDeadline, standings, transition, type GameState } from './engine.ts';
+import { fixtureDisplayQuestions } from './legacy-test-fixture.ts';
 import type { ArchiveStatus, ArchiveReason, BankSource } from '../../../../packages/shared/src/results.ts';
 import { ARCHIVE_CHUNK, ARCHIVE_BATCHES, retryDelay, writeArchiveChunk, type ArchiveHeader, type ArchivePlayer } from '../results/writer.ts';
 
@@ -150,7 +151,9 @@ export class GameRoom extends DurableObject<Env> {
     if (existing === null || due < existing) await this.ctx.storage.setAlarm(due);
   }
   private commonSnapshot() {
-    const state = this.state(), q = this.questions()[state.index];
+    const state = this.state();
+    const source = this.get('source');
+    const q = fixtureDisplayQuestions(this.env.DEPLOYMENT_ENV, source ? JSON.parse(source) as BankSource : undefined, this.questions())[state.index];
     const players = this.ctx.storage.sql.exec<Player & Record<string, SqlStorageValue>>(
       'SELECT p.id,p.nickname,COALESCE(SUM(a.earned),0) AS score FROM players p LEFT JOIN answers a ON a.player=p.id AND a.questionIndex<=? WHERE p.activated=1 GROUP BY p.id ORDER BY p.rowid', state.revealedThrough,
     ).toArray();

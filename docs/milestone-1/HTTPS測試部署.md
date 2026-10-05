@@ -25,7 +25,7 @@
 
 ## 自動流程會做什麼
 
-1. 在GitHub執行型別、13項單元測試、遊戲／題庫／歸檔／HTTPS安全整合測試與兩套隔離瀏覽器驗收，再做Wrangler部署dry-run。
+1. 在GitHub執行型別、14項單元測試、遊戲／題庫／歸檔／HTTPS安全整合測試與兩套隔離瀏覽器驗收，再做Wrangler部署dry-run。
 2. 檢查三項連線設定。缺少或格式不符時只顯示缺少的設定名稱，略過實際部署；不輸出秘密值。
 3. 讀取帳號workers.dev子網域；建立或重用名稱恰為 **family-day-game-staging** 的D1，填入真正UUID及指定hostname。根目錄wrangler.jsonc的本機設定不會被覆蓋。
 4. 在該Staging D1套用0001、0002 migration。已套用的migration不重複執行；沒有DROP或清空資料步驟。
@@ -51,6 +51,8 @@
 本專案Staging：[測試網址](https://family-day-game-staging.ompstw.workers.dev)。取得網址不代表全部驗收已通過，要一起看Actions的部署與遠端驗收結果。
 
 ## 人機驗證測試模式的邊界
+
+手機試玩題目不再包含安全測試程式文字。雲端瀏覽器驗收只在未儲存的草稿預覽測試script文字，發布前會換成一般題目；本機隔離遊戲仍保留完整XSS文字驗收。既有Staging房間若符合舊E2E題庫名稱及完整三題測試資料，對主持人與玩家送出的快照會將題目顯示為「第1題」至「第3題」，不更動儲存的版本、答案、配分或成績。正式及使用者自訂題庫不套用這項相容處理。
 
 Staging使用Cloudflare官方dummy Turnstile金鑰，讓自動瀏覽器穩定測成功／失敗流程。**此模式不能代表真正的人機辨識已通過驗收；Staging僅放測試題、測試暱稱，不放正式題庫或真實參加者資料。**
 

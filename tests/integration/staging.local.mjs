@@ -37,6 +37,26 @@ try {
  assert.equal((await call(`/api/rooms/${room.roomId}/join`, 'POST', { nickname: '錯token', challenge: 'bad' })).status, 403);
  await ok(`/api/rooms/${room.roomId}/join`, 'POST', { nickname: '測試玩家', challenge: 'XXXX.DUMMY.TOKEN.XXXX' }, 201);
  assert.equal(validations, 2, '有效與無效token都送Siteverify，無token不送');
+ // Existing rooms keep their stored question version, but old synthetic E2E
+ // script literals must no longer appear in host/player snapshots.
+ const legacyQuestions = [1,2,3].map(round => ({ id: 'legacy-'+round, round, text: `<script>window.injection = true</script> 第${round}題`, options: ['答案A','答案B'], correct: 1, seconds: 120, points: 260 }));
+ const legacy = await ok('/api/admin/banks', 'POST', { title: 'E2E題庫-1791170000000', description: '', questions: legacyQuestions }, 201);
+ const legacyPublished = await ok(`/api/admin/banks/${legacy.id}/publish`, 'POST', { revision: legacy.revision });
+ const legacyRoom = await ok('/api/rooms', 'POST', { bankId: legacy.id, publishedRevision: legacyPublished.publishedRevision }, 201);
+ const socket = await mf.dispatchFetch(base + `/api/rooms/${legacyRoom.roomId}/socket`, { headers: { Origin: base, Upgrade: 'websocket', 'Sec-WebSocket-Protocol': 'family.v1, auth.' + legacyRoom.hostToken } });
+ assert.equal(socket.status, 101);
+ const ws = socket.webSocket;
+ const snapshot = (phase) => new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error('舊測試房間快照逾時')), 3000);
+  const listener = event => { const message = JSON.parse(event.data); if (message.type === 'state.snapshot' && (!phase || message.phase === phase)) { clearTimeout(timer); ws.removeEventListener('message', listener); resolve(message); } };
+  ws.addEventListener('message', listener);
+ });
+ const initial = snapshot(); ws.accept(); const lobby = await initial;
+ const opened = snapshot('QUESTION_OPEN');
+ ws.send(JSON.stringify({ protocol: 1, type: 'host.command', action: 'start', commandId: crypto.randomUUID(), expectedVersion: lobby.version }));
+ const display = await opened; ws.close();
+ assert.equal(display.question.text, '第1題'); assert.equal(display.question.id, 'legacy-1'); assert.equal(display.question.points, 260);
+ assert.deepEqual((await ok(`/api/admin/banks/${legacy.id}`)).questions, legacyQuestions, '保留原始題庫版本');
  assert.equal((await mf.dispatchFetch('http://' + host + '/api/config')).status, 403);
 } finally { await mf.dispose(); }
 for (const config of [{ ...bindings, DEPLOYMENT_ENV: 'production' }, { ...bindings, STAGING_HOSTNAME: 'other.workers.dev' }, { ...bindings, TURNSTILE_MODE: 'real' }]) {

@@ -58,6 +58,9 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
   await page.keyboard.press('Escape'); await preview.waitFor({ state: 'detached' });
   assert.equal(await page.getByLabel('題庫名稱', { exact: true }).inputValue(), title);
   assert.equal(await page.getByText('尚有未儲存變更', { exact: true }).count(), 1);
+  // Public Staging games use readable questions. Script literals remain in
+  // the unsaved security preview and the isolated local game regression.
+  if (remote) for (let i = 0; i < 3; i++) await page.locator('.question-editor').nth(i).getByLabel('題目', { exact: true }).fill(`第${i + 1}題`);
   await page.getByRole('button', { name: '儲存草稿', exact: true }).click();
   await page.getByText('草稿已儲存；已發布版本未變更。', { exact: true }).waitFor();
   await page.getByRole('button', { name: '發布目前已儲存的草稿', exact: true }).click();
@@ -104,7 +107,8 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
   await host.reload(); await host.getByText('目前 2 人在線／2 人已加入', { exact: true }).waitFor();
   for (let round = 0; round < 3; round++) {
    await host.getByRole('button', { name: round === 0 ? '開始第一回合' : '開始下一回合', exact: true }).click();
-   await host.getByRole('heading', { name: `<script>window.injection = true</script> 第${round + 1}題`, exact: true }).waitFor();
+   await host.getByRole('heading', { name: `${remote ? '' : '<script>window.injection = true</script> '}第${round + 1}題`, exact: true }).waitFor();
+   if (remote) assert.equal(await host.getByText('<script>window.injection', { exact: false }).count(), 0);
    assert.equal(await host.evaluate(() => window.injection), undefined);
    for (let i = 0; i < players.length; i++) {
     const p = players[i]; await p.getByRole('heading', { name: '答題中', exact: true }).waitFor();
