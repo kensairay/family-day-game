@@ -58,7 +58,7 @@ export function adminLogin(parent: HTMLElement, say: (text: string) => void, aut
  // Finish the initial session probe before allowing a new login. A late 401
  // otherwise invalidates a login already in flight on a slower connection.
  let busy = true, expiryTimer: ReturnType<typeof setTimeout> | undefined;
- submit.disabled = true;
+ submit.disabled = true; password.disabled = true;
  const signedIn = async ({ expires }: { expires: number }) => {
   clearTimeout(expiryTimer);
   if (!Number.isFinite(expires) || expires <= Date.now()) { clearSession(); return; }
@@ -79,6 +79,6 @@ export function adminLogin(parent: HTMLElement, say: (text: string) => void, aut
   catch (error) { say((error as Error).message); } finally { logout.disabled = false; }
  };
  void adminRequest<{ expires: number }>('/api/admin/session').then(signedIn).catch(error => { if (!(error instanceof AdminError && error.status === 401)) say(error.message); })
-  .finally(() => { busy = false; submit.disabled = false; });
+  .finally(() => { busy = false; submit.disabled = false; password.disabled = false; });
  return { reauthenticate: () => clearSession() };
 }
