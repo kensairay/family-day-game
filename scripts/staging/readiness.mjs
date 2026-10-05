@@ -1,0 +1,12 @@
+import { appendFile } from 'node:fs/promises';
+const needed = ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'STAGING_ADMIN_SECRET'];
+const missing = needed.filter(key => !process.env[key]);
+const problems = [...missing.map(key => `${key} 尚未設定`)];
+if (process.env.CLOUDFLARE_ACCOUNT_ID && !/^[a-f0-9]{32}$/i.test(process.env.CLOUDFLARE_ACCOUNT_ID)) problems.push('CLOUDFLARE_ACCOUNT_ID 格式不符');
+if (process.env.STAGING_ADMIN_SECRET && (process.env.STAGING_ADMIN_SECRET.length < 24 || process.env.STAGING_ADMIN_SECRET === 'replace-with-a-long-random-secret')) problems.push('STAGING_ADMIN_SECRET 必須至少24字元且不是範例密碼');
+const ready = problems.length === 0;
+if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `ready=${ready}\n`);
+const summary = ready ? 'Cloudflare 部署連線設定已就緒；接續建立獨立 Staging 與遠端驗收。' : `HTTPS 部署尚未執行：\n${problems.map(message => '- ' + message).join('\n')}\n設定 GitHub Actions secrets 後重新執行部署。`;
+console.log(summary);
+if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `## HTTPS 測試部署\n\n${summary}\n`);
+if (!process.env.GITHUB_OUTPUT && !ready) process.exitCode = 1;

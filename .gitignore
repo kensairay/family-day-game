@@ -15,3 +15,5 @@ apps/web/build/
 .dev.vars
 .dev.vars.*
 !.dev.vars.example
+wrangler.staging.generated.json
+staging-*.generated.json

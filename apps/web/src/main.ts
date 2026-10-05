@@ -10,6 +10,15 @@ const header = document.createElement('header'); header.innerHTML = '<span class
 const panel = document.createElement('section'); panel.className = 'card'; app.append(panel);
 const status = document.createElement('p'); status.className = 'status'; status.setAttribute('role', 'status'); app.append(status);
 const say = (text: string) => { status.textContent = text; };
+const configuration = fetch('/api/config').then(async response => {
+ const config = await response.json(); if (!response.ok) throw new Error(config.error);
+ if (config.environment === 'staging') {
+  const notice = document.createElement('p'); notice.className = 'staging-notice';
+  notice.textContent = config.turnstileMode === 'test' ? 'HTTPS 測試環境 · 人機驗證為測試模式 · 請使用測試題與測試暱稱' : 'HTTPS 測試環境 · 正式人機驗證'; header.append(notice);
+ }
+ return config;
+});
+void configuration.catch(error => say((error as Error).message));
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', parent: HTMLElement = panel) {
  const el = document.createElement(tag); el.textContent = text; parent.append(el); return el;
 }
@@ -155,7 +164,7 @@ async function showJoin() {
  let challenge: string | undefined;
  let resetChallenge: (() => void) | undefined;
  try {
-  const config = await fetch('/api/config').then(async r => { const c = await r.json(); if (!r.ok) throw new Error(c.error); return c; });
+  const config = await configuration;
   if (config.turnstileSiteKey) {
    join.disabled = true;
    const box = element('div'); box.id = 'challenge';

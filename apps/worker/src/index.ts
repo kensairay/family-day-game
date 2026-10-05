@@ -7,11 +7,13 @@ import { adminGate, authorizeAdmin, sessionRoute } from './admin/auth.ts';
 import { bankRoute, publishedBankSnapshot } from './admin/banks.ts';
 import type { BankSource } from '../../../packages/shared/src/results.ts';
 import { resultsRoute } from './admin/results.ts';
+import { turnstileMode, verifyTurnstile } from './turnstile.ts';
 export { GameRoom } from './room/GameRoom.ts';
 export { RoomDirectory } from './RoomDirectory.ts';
 export interface Env {
  ROOMS: DurableObjectNamespace<GameRoom>; DIRECTORY: DurableObjectNamespace<RoomDirectory>; ASSETS: Fetcher;
  ADMIN_SECRET?: string; PUBLIC_DEPLOYMENT?: string; TURNSTILE_SECRET?: string; TURNSTILE_SITE_KEY?: string;
+ DEPLOYMENT_ENV?: string; TURNSTILE_MODE?: string; STAGING_HOSTNAME?: string; DEPLOYMENT_REVISION?: string;
  DB?: D1Database;
 }
 export default {
@@ -27,10 +29,11 @@ export default {
   }
   try {
    if (!local && (env.PUBLIC_DEPLOYMENT !== 'true' || !env.TURNSTILE_SECRET || !env.TURNSTILE_SITE_KEY)) throw new HttpError(503, '公開部署尚未完成安全設定');
+   const mode = local ? 'off' : turnstileMode(env, url.hostname);
    if (!['GET', 'HEAD'].includes(req.method) || url.pathname.endsWith('/socket')) {
     if (req.headers.get('Origin') !== url.origin) throw new HttpError(403, '來源驗證失敗');
    }
-   if (url.pathname === '/api/config' && req.method === 'GET') return json({ turnstileSiteKey: local ? null : env.TURNSTILE_SITE_KEY });
+   if (url.pathname === '/api/config' && req.method === 'GET') return json({ turnstileSiteKey: local ? null : env.TURNSTILE_SITE_KEY, environment: env.DEPLOYMENT_ENV ?? (local ? 'local' : 'production'), turnstileMode: mode, deploymentRevision: env.DEPLOYMENT_REVISION ?? null });
    if (['/api/admin/login', '/api/admin/logout', '/api/admin/session'].includes(url.pathname)) return await sessionRoute(req, env, local);
    if (url.pathname.startsWith('/api/admin/')) {
     await adminGate(req, env, 'admin'); await authorizeAdmin(req, env);
@@ -78,15 +81,7 @@ export default {
     const data = await readJSON(req, 4096);
     let name;
     try { name = nickname(data.nickname); } catch (e) { throw new HttpError(400, (e as Error).message); }
-    if (!local) {
-     if (typeof data.challenge !== 'string' || data.challenge.length > 2048) throw new HttpError(403, '請完成人機驗證');
-     const result = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret: env.TURNSTILE_SECRET, response: data.challenge, remoteip: req.headers.get('CF-Connecting-IP') }), signal: AbortSignal.timeout(5000),
-     });
-     const check = await result.json() as { success?: boolean; hostname?: string; action?: string };
-     if (!check.success || check.hostname !== url.hostname || check.action !== 'join') throw new HttpError(403, '人機驗證失敗，請重試');
-    }
+    if (!local) await verifyTurnstile(env, url.hostname, data.challenge, req.headers.get('CF-Connecting-IP'));
     return env.ROOMS.get(env.ROOMS.idFromName(room)).fetch(new Request('https://room/join', {
      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: name }),
     }));

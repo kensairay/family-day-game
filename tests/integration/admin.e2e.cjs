@@ -1,6 +1,7 @@
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
-const base = process.env.TEST_URL || 'http://127.0.0.1:8787';
+const base = require('./target.cjs').testOrigin(process.env.TEST_URL || 'http://127.0.0.1:8787');
+const remote = base.startsWith('https:');
 const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secret';
 (async () => {
  const browser = await chromium.launch({ headless: true, ...(process.env.TEST_BROWSER_PATH ? { executablePath: process.env.TEST_BROWSER_PATH } : {}) });
@@ -12,6 +13,11 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
   await page.goto(base + '/?admin');
   await page.getByLabel('管理密碼').fill(secret); await page.getByRole('button', { name: '登入', exact: true }).click();
   await page.getByRole('button', { name: '新增題庫', exact: true }).click();
+  if (remote) {
+   const cookie = (await context.cookies(base + '/api/admin/session')).find(item => item.name === 'family_admin');
+   assert.ok(cookie && cookie.secure && cookie.httpOnly && cookie.sameSite === 'Strict');
+   await page.getByText('HTTPS 測試環境 · 人機驗證為測試模式 · 請使用測試題與測試暱稱', { exact: true }).waitFor();
+  }
   await page.getByLabel('題庫名稱', { exact: true }).fill(title);
   for (let i = 0; i < 3; i++) {
    await page.getByRole('button', { name: '新增題目', exact: true }).click();
@@ -20,6 +26,7 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
    await q.getByLabel('題目', { exact: true }).fill('<script>window.injection = true</script> 第' + (i + 1) + '題');
    await q.getByLabel('選項A', { exact: true }).fill('答案A'); await q.getByLabel('選項B', { exact: true }).fill('答案B');
    await q.getByLabel('正確答案', { exact: true }).selectOption('1');
+   if (remote) await q.getByLabel('作答秒數（3～120）', { exact: true }).fill('120');
   }
   // Preview the unsaved draft, including literal HTML, without publishing/saving it.
   await page.getByRole('button', { name: '題庫手機預覽', exact: true }).click();
@@ -66,6 +73,15 @@ const secret = process.env.TEST_ADMIN_SECRET || 'local-test-only-very-long-secre
   const bankId = await host.getByLabel('使用題庫').locator('option').filter({ hasText: title }).getAttribute('value');
   await host.getByLabel('使用題庫').selectOption(bankId); await host.getByRole('button', { name: '建立房間', exact: true }).click();
   await host.getByText('目前 0 人在線／0 人已加入', { exact: true }).waitFor();
+  if (remote) {
+   const code = new URL(host.url()).searchParams.get('room');
+   for (const challenge of [undefined, 'invalid-staging-test-token']) {
+    const rejected = await host.evaluate(async ({ code, challenge }) => (await fetch(`/api/rooms/${code}/join`, {
+     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: '拒絕測試', challenge }),
+    })).status, { code, challenge });
+    assert.equal(rejected, 403, '缺少／無效Turnstile token不可加入');
+   }
+  }
   const joinURL = await host.getByRole('link', { name: '開啟玩家加入頁', exact: true }).getAttribute('href');
   const playerContexts = await Promise.all([320, 430].map(width => browser.newContext({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true })));
   const players = await Promise.all(playerContexts.map(c => c.newPage()));
