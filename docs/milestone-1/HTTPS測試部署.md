@@ -4,6 +4,8 @@
 
 本次遠端驗收於2026-10-05 13:47（台北時間）全部通過。部署程式版本為 `b52636aef77df48dab2393253111f8fe75b79675`，Worker版本為 `0cda1da2-ebc7-40a7-83ae-87555035432f`。[GitHub Actions驗收紀錄](https://github.com/kensairay/family-day-game/actions/runs/37269146690)的acceptance與staging兩項工作均成功，JSON驗收報告保存至2026-10-12。真實手機、正式Turnstile及350連線壓測仍待執行。
 
+後續更新：2026-10-05 14:04，手機試玩回報的測試程式文字已修正，部署程式版本為 `06635094e4f1fed8fba89adc5384279275cf2ba5`，[最新自動驗收](https://github.com/kensairay/family-day-game/actions/runs/37270392964)全部通過。使用者已開始手機實測；完整跨裝置、正式Turnstile及350連線驗收仍待完成。下一步見 [開發計畫](../開發計畫與下一步-2026-10-05.md)。
+
 ## 你需要完成的一次設定
 
 這一段需要你的帳號操作；API Token和密碼請只存進GitHub Secrets，不要貼在對話或提交程式碼。
