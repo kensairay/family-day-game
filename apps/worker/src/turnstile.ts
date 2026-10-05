@@ -4,6 +4,7 @@ import { HttpError } from './security.ts';
 // Cloudflare's documented dummy pair, confined to the dedicated synthetic staging Worker.
 export const testSiteKey = '1x00000000000000000000AA';
 export const testSecretKey = '1x0000000000000000000000000000000AA';
+export const testToken = 'XXXX.DUMMY.TOKEN.XXXX';
 const testSites = new Set([testSiteKey, '2x00000000000000000000AB', '1x00000000000000000000BB', '2x00000000000000000000BB', '3x00000000000000000000FF']);
 const testSecrets = new Set([testSecretKey, '2x0000000000000000000000000000000AA', '3x0000000000000000000000000000000AA']);
 type Settings = Pick<Env, 'DEPLOYMENT_ENV' | 'STAGING_HOSTNAME' | 'TURNSTILE_MODE' | 'TURNSTILE_SITE_KEY' | 'TURNSTILE_SECRET'>;
@@ -25,5 +26,8 @@ export async function verifyTurnstile(env: Settings, hostname: string, challenge
  });
  const check = await response.json() as { success?: boolean; hostname?: string; action?: string };
  // Dummy verification has fixed metadata. Real widgets must still match hostname and action.
- if (!response.ok || check.success !== true || (mode === 'real' && (check.hostname !== hostname || check.action !== 'join'))) throw new HttpError(403, '人機驗證失敗，請重試');
+ // The passing test secret may accept arbitrary strings. Require the documented
+ // widget token as well; this remains synthetic validation, not bot protection.
+ if (!response.ok || check.success !== true || (mode === 'test' && challenge !== testToken)
+  || (mode === 'real' && (check.hostname !== hostname || check.action !== 'join'))) throw new HttpError(403, '人機驗證失敗，請重試');
 }

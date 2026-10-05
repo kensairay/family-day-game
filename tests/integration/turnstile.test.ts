@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { testSiteKey, testSecretKey, turnstileMode, verifyTurnstile } from '../../apps/worker/src/turnstile.ts';
+import { testSiteKey, testSecretKey, testToken, turnstileMode, verifyTurnstile } from '../../apps/worker/src/turnstile.ts';
 const host = 'family-day-game-staging.example.workers.dev';
 const staging = { DEPLOYMENT_ENV: 'staging', STAGING_HOSTNAME: host, TURNSTILE_MODE: 'test', TURNSTILE_SITE_KEY: testSiteKey, TURNSTILE_SECRET: testSecretKey };
 const real = { TURNSTILE_SITE_KEY: 'real-site', TURNSTILE_SECRET: 'real-secret' };
@@ -17,11 +17,12 @@ test('測試模式仍呼叫Siteverify並拒絕失敗或缺少token；正式模�
   calls++; assert.equal(url, 'https://challenges.cloudflare.com/turnstile/v0/siteverify');
   assert.equal(options?.method, 'POST'); return Response.json(result, { status });
  };
- await verifyTurnstile(staging, host, 'dummy', null, mock({ success: true, hostname: 'localhost', action: 'test' }));
+ await verifyTurnstile(staging, host, testToken, null, mock({ success: true, hostname: 'localhost', action: 'test' }));
  assert.equal(calls, 1);
- await assert.rejects(verifyTurnstile(staging, host, 'bad', null, mock({ success: false })));
+ await assert.rejects(verifyTurnstile(staging, host, testToken, null, mock({ success: false })));
+ await assert.rejects(verifyTurnstile(staging, host, 'bad', null, mock({ success: true })));
  await assert.rejects(verifyTurnstile(staging, host, undefined, null, mock({ success: true })));
- await assert.rejects(verifyTurnstile(staging, host, 'dummy', null, mock({ success: true }, 500)));
+ await assert.rejects(verifyTurnstile(staging, host, testToken, null, mock({ success: true }, 500)));
  await verifyTurnstile(real, host, 'valid', null, mock({ success: true, hostname: host, action: 'join' }));
  for (const result of [{ success: true, hostname: 'evil.invalid', action: 'join' }, { success: true, hostname: host, action: 'other' }, { success: 'true', hostname: host, action: 'join' }]) await assert.rejects(verifyTurnstile(real, host, 'valid', null, mock(result)));
 });

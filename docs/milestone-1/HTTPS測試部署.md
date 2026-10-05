@@ -1,6 +1,6 @@
 # HTTPS 測試部署與自動驗收
 
-更新：2026-10-05。A版；Cloudflare帳號已申請。部署設定、部署腳本、自動驗收及安全閘門已準備；尚未取得Cloudflare部署授權，尚未建立遠端Worker／D1或取得可用HTTPS網址。
+更新：2026-10-05。A版；Cloudflare部署授權已設定，已建立獨立Staging Worker、Durable Objects與D1並套用兩份migration。測試網址為 https://family-day-game-staging.ompstw.workers.dev 。各版本的遠端驗收結果以GitHub Actions摘要為準；部署成功不等於全部驗收通過。
 
 ## 你需要完成的一次設定
 
@@ -46,7 +46,7 @@
 - 主持人：`/?host`，選已發布題庫建立房間。
 - 成績後台：`/?results`。
 
-目前沒有可分享的測試網址；取得網址不代表全部驗收已通過，要一起看Actions的部署與遠端驗收結果。
+本專案Staging：[測試網址](https://family-day-game-staging.ompstw.workers.dev)。取得網址不代表全部驗收已通過，要一起看Actions的部署與遠端驗收結果。
 
 ## 人機驗證測試模式的邊界
 
@@ -57,6 +57,8 @@ Staging使用Cloudflare官方dummy Turnstile金鑰，讓自動瀏覽器穩定測
 新部署有測試模式標示。管理員仍要登入，Cookie在HTTPS具有Secure／HttpOnly／SameSite=Strict；Origin、請求大小、房間與身分限流、正解公布時機、CSV防護等規則保留。部署設定拒絕正式Worker名稱、正式D1名稱、外部DO script_name與DNS路由；遠端測試目標也拒絕正式網址或含帳密的URL。
 
 ## 自動測試與待驗收項目
+
+測試模式除了呼叫Siteverify，還要求token恰為官方測試元件產生的 `XXXX.DUMMY.TOKEN.XXXX`；即使Cloudflare的成功測試金鑰接受任意字串，伺服器也會拒絕其他值。固定token是公開的測試資料，不能作為正式防機器人措施。管理登入的密碼欄與按鈕會等待初始session檢查完成才開放，避免慢速網路的初始401回應清除剛輸入的密碼或取消正在進行的登入。
 
 | 項目 | 自動驗收 |
 |---|---|
