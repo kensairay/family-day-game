@@ -6,6 +6,7 @@ export class RoomDirectory extends DurableObject<Env> {
  constructor(ctx: DurableObjectState, env: Env) {
   super(ctx, env);
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS rooms (id TEXT PRIMARY KEY, expires INTEGER NOT NULL)');
+  ctx.storage.sql.exec('CREATE INDEX IF NOT EXISTS rooms_recent ON rooms(expires DESC,id DESC)');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS known_rooms (id TEXT PRIMARY KEY)');
   ctx.storage.sql.exec('INSERT OR IGNORE INTO known_rooms SELECT id FROM rooms');
   ctx.storage.sql.exec('CREATE TABLE IF NOT EXISTS limits (key TEXT PRIMARY KEY, start INTEGER NOT NULL, count INTEGER NOT NULL)');
@@ -20,6 +21,13 @@ export class RoomDirectory extends DurableObject<Env> {
   }); return true;
  }
  hasRoom(id: string): boolean { return !!this.ctx.storage.sql.exec('SELECT id FROM known_rooms WHERE id=?', id).toArray().length; }
+ listRooms(cursor?: { expires: number; roomId: string }): { rooms: { roomId: string; expires: number }[]; nextCursor: string | null } {
+  const rows = cursor
+   ? this.ctx.storage.sql.exec<{ id: string; expires: number }>('SELECT id,expires FROM rooms WHERE expires>? AND (expires<? OR (expires=? AND id<?)) ORDER BY expires DESC,id DESC LIMIT 11', Date.now(), cursor.expires, cursor.expires, cursor.roomId).toArray()
+   : this.ctx.storage.sql.exec<{ id: string; expires: number }>('SELECT id,expires FROM rooms WHERE expires>? ORDER BY expires DESC,id DESC LIMIT 11', Date.now()).toArray();
+  const page = rows.slice(0, 10), last = page.at(-1);
+  return { rooms: page.map(row => ({ roomId: row.id, expires: row.expires })), nextCursor: rows.length > 10 && last ? `${last.expires}.${last.id}` : null };
+ }
  private prune() {
   const now = Date.now();
   this.ctx.storage.sql.exec('DELETE FROM rooms WHERE expires<=?', now);

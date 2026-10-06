@@ -4,15 +4,17 @@
 
 ## 目前狀態
 
-A版核心功能已完成：Cloudflare Workers、SQLite Durable Objects、D1；B2保留替代方案。已有題庫後台、主持人控制、多人同步、伺服器計分、重連、成績歸檔與CSV。HTTPS Staging及自動驗收已通過，使用者已開始手機試玩。
+A版核心功能已完成：Cloudflare Workers、SQLite Durable Objects、D1；B2保留替代方案。已有題庫後台、房間狀態後台、主持人控制、多人同步、伺服器計分、重連、成績歸檔與CSV。HTTPS Staging及自動驗收已通過，使用者已開始手機試玩。
 
 目前是測試環境，使用人機驗證測試金鑰，只放測試題與暱稱。真正Turnstile、350條連線壓測、正式環境與現場彩排仍待完成。
 
 - [題庫後台](https://family-day-game-staging.ompstw.workers.dev/?admin)
 - [主持人入口](https://family-day-game-staging.ompstw.workers.dev/?host)
+- [房間狀態後台](https://family-day-game-staging.ompstw.workers.dev/?rooms)
 - [成績後台](https://family-day-game-staging.ompstw.workers.dev/?results)
 - [開發計畫與下一步](docs/開發計畫與下一步-2026-10-05.md)
 - [開發與測試](docs/milestone-1/開發與測試.md)
+- [房間狀態操作說明](docs/milestone-1/房間狀態後台.md)
 - [HTTPS部署與驗收](docs/milestone-1/HTTPS測試部署.md)
 
 ## 本機開發

@@ -7,6 +7,7 @@ const time = (value: number | null) => value === null ? '—' : new Intl.DateTim
 export function showResults(panel: HTMLElement, say: (text: string) => void) {
  document.querySelector('main')?.classList.add('admin-layout');
  el(panel, 'h2', '活動成績歸檔'); const bankLink = el(panel, 'a', '前往題庫後台'); bankLink.href = '?admin';
+ const roomsLink = el(panel, 'a', '房間狀態後台'); roomsLink.href = '?rooms';
  const auth = el(panel, 'div'); const workspace = el(panel, 'div'); workspace.hidden = true;
  el(workspace, 'p', '只有完整歸檔的成績可以查閱或匯出。中途關閉／到期時，未公布的題目不計分；提前結束遊戲則依結算畫面的分數保存。').className = 'muted';
  const room = field(workspace, '查詢房間歸檔狀態（8碼）', ''); room.maxLength = 8;

@@ -3,6 +3,7 @@ import { validRoom, type HostAction, type Snapshot } from '../../../packages/sha
 import { RoomConnection, type ServerMessage } from './lib/connection.ts';
 import { showAdmin, showHostSetup } from './admin.ts';
 import { showResults } from './results.ts';
+import { showRooms } from './rooms.ts';
 import './style.css';
 
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -144,6 +145,7 @@ function enter(token: string) {
  panel.replaceChildren(); snapshot = undefined;
  element('p', `房間代碼：${room}`);
  if (isHost) {
+  const roomsLink = element('a', '開啟房間狀態後台'); roomsLink.href = '?rooms'; roomsLink.target = '_blank'; roomsLink.rel = 'noopener';
   const join = new URL(location.href); join.search = ''; join.searchParams.set('room', room);
   const canvas = element('canvas'); QRCode.toCanvas(canvas, join.href, { width: 200 }).catch(() => say('QR Code產生失敗，請使用加入連結。'));
   const link = element('a', '開啟玩家加入頁'); link.href = join.href;
@@ -188,7 +190,9 @@ async function showJoin() {
   } catch (e) { say((e as Error).message); if (resetChallenge) resetChallenge(); else join.disabled = false; }
  };
 }
-if (params.has('results')) {
+if (params.has('rooms')) {
+ showRooms(panel, say);
+} else if (params.has('results')) {
  showResults(panel, say);
 } else if (params.has('admin')) {
  showAdmin(panel, say);

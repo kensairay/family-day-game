@@ -41,7 +41,7 @@ try {
   }
  });
  await check('未登入管理API拒絕／跨來源修改拒絕／未知房間拒絕', async () => {
-  for (const path of ['/api/admin/banks', '/api/admin/results', '/api/admin/session', '/api/admin/results/00000000-0000-4000-8000-000000000000/csv']) {
+  for (const path of ['/api/admin/banks', '/api/admin/rooms', '/api/admin/results', '/api/admin/session', '/api/admin/results/00000000-0000-4000-8000-000000000000/csv']) {
    const response = await request(path); expect(response.status === 401, '未登入應拒絕：' + path);
    expect(response.headers.get('Cache-Control') === 'no-store', '敏感API缺少no-store');
   }
@@ -53,7 +53,7 @@ try {
  // Do not pass the Cloudflare deployment token into browser tests.
  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('CLOUDFLARE_') && !['STAGING_ADMIN_SECRET', 'GH_TOKEN', 'GITHUB_TOKEN'].includes(name)));
  env.TEST_URL = origin; env.TEST_ADMIN_SECRET = secret;
- for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs', 'connection.e2e.cjs']) await check(script === 'admin.e2e.cjs' ? '遠端題庫／三回合／正解保密／D1成績／CSV／工作階段驗收' : script === 'lobby.e2e.cjs' ? '遠端大廳同步／分頁取代／斷線恢復驗收' : 'Chromium／WebKit六題題庫連線與錯誤提示驗收', async () => {
+ for (const script of ['admin.e2e.cjs', 'lobby.e2e.cjs', 'connection.e2e.cjs']) await check(script === 'admin.e2e.cjs' ? '遠端題庫／三回合／正解保密／D1成績／CSV／工作階段驗收' : script === 'lobby.e2e.cjs' ? '遠端大廳同步／分頁取代／斷線恢復驗收' : 'Chromium／WebKit六題連線與房間後台驗收', async () => {
   const output = await promisify(execFile)(process.execPath, ['tests/integration/' + script], { env, timeout: 180000, maxBuffer: 1024 * 1024 });
   process.stdout.write(clean(output.stdout));
  });

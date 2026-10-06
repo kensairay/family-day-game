@@ -5,6 +5,7 @@ import { nickname, validId, type HostAction, type Player, type Question, type Sn
 import { canAnswer, initialState, settleDeadline, standings, transition, type GameState } from './engine.ts';
 import { fixtureDisplayQuestions } from './legacy-test-fixture.ts';
 import type { ArchiveStatus, ArchiveReason, BankSource } from '../../../../packages/shared/src/results.ts';
+import type { RoomStatus } from '../../../../packages/shared/src/rooms.ts';
 import { ARCHIVE_CHUNK, ARCHIVE_BATCHES, retryDelay, writeArchiveChunk, type ArchiveHeader, type ArchivePlayer } from '../results/writer.ts';
 
 type Attachment = { role: 'host' | 'player'; id: string; closed?: boolean; lease: number };
@@ -43,6 +44,24 @@ export class GameRoom extends DurableObject<Env> {
   }
   archiveInfo(): { exists: boolean; archive: ArchiveStatus | null } {
     return { exists: !!this.get('id'), archive: this.get('id') ? this.archiveStatus() : null };
+  }
+  roomStatus(): RoomStatus | null {
+    const roomId = this.get('id'); if (!roomId) return null;
+    const now = Date.now(), expires = Number(this.get('expires') ?? 0);
+    const state = settleDeadline(this.state(), now), questions = this.questions();
+    const lifecycle = expires <= now ? 'expired' : state.phase === 'CLOSED' ? 'closed' : state.phase === 'FINISHED' ? 'finished' : 'open';
+    const sockets = this.activeSockets().map(ws => ws.deserializeAttachment() as Attachment);
+    const terminal = lifecycle === 'closed' || lifecycle === 'expired';
+    return {
+      roomId, source: JSON.parse(this.get('source') ?? '{"bankId":null,"revision":null,"title":"舊版／本機題庫"}'),
+      phase: terminal ? 'CLOSED' : state.phase, lifecycle, version: state.version,
+      createdAt: Number(this.get('createdAt') ?? expires - 86400000), startedAt: this.get('startedAt') ? Number(this.get('startedAt')) : null,
+      expires, checkedAt: now, online: terminal ? 0 : new Set(sockets.filter(a => a.role === 'player').map(a => a.id)).size,
+      hostOnline: !terminal && sockets.some(a => a.role === 'host'),
+      joined: this.ctx.storage.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM players WHERE activated=1').one().n,
+      questionIndex: state.index, questionCount: questions.length, round: questions[state.index]?.round ?? null,
+      deadline: terminal ? null : state.deadline, revealedCount: Math.max(0, state.revealedThrough + 1), archive: this.archiveStatus(),
+    };
   }
   private queueArchive(state: GameState, reason: ArchiveReason) {
     if (this.archiveJob()) return;

@@ -11,7 +11,7 @@
     "dev": "npm run build && npm run db:migrate:local && wrangler dev --port 8787",
     "db:migrate:local": "wrangler d1 migrations apply family-day-game --local",
     "check": "tsc --noEmit -p apps/web && tsc --noEmit -p apps/worker",
-    "test": "npm run test:unit && npm run test:game && npm run test:admin && npm run test:results && npm run test:staging",
+    "test": "npm run test:unit && npm run test:game && npm run test:admin && npm run test:rooms && npm run test:results && npm run test:staging",
     "test:unit": "node --experimental-strip-types --test tests/integration/*.test.ts",
     "test:game": "node tests/integration/game.local.mjs",
     "test:admin": "node tests/integration/admin.local.mjs",
@@ -22,7 +22,8 @@
     "staging:readiness": "node scripts/staging/readiness.mjs",
     "test:staging": "node tests/integration/staging.local.mjs",
     "staging:deploy": "npm run build && node scripts/staging/deploy.mjs",
-    "staging:verify": "node scripts/staging/verify.mjs"
+    "staging:verify": "node scripts/staging/verify.mjs",
+    "test:rooms": "node tests/integration/rooms.local.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "latest",

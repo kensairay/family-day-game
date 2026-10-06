@@ -7,6 +7,7 @@ import { adminGate, authorizeAdmin, sessionRoute } from './admin/auth.ts';
 import { bankRoute, publishedBankSnapshot } from './admin/banks.ts';
 import type { BankSource } from '../../../packages/shared/src/results.ts';
 import { resultsRoute } from './admin/results.ts';
+import { roomsRoute } from './admin/rooms.ts';
 import { turnstileMode, verifyTurnstile } from './turnstile.ts';
 export { GameRoom } from './room/GameRoom.ts';
 export { RoomDirectory } from './RoomDirectory.ts';
@@ -40,6 +41,7 @@ export default {
    if (['/api/admin/login', '/api/admin/logout', '/api/admin/session'].includes(url.pathname)) return await sessionRoute(req, env, local);
    if (url.pathname.startsWith('/api/admin/')) {
     await adminGate(req, env, 'admin'); await authorizeAdmin(req, env);
+    if (url.pathname === '/api/admin/rooms' || url.pathname.startsWith('/api/admin/rooms/')) return await roomsRoute(req, env);
     if (url.pathname === '/api/admin/results' || url.pathname.startsWith('/api/admin/results/')) return await resultsRoute(req, env);
     return await bankRoute(req, env.DB);
    }
