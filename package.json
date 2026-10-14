@@ -1,0 +1,24 @@
+{
+  "name": "family-day-game",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "db:local": "wrangler d1 migrations apply family-day-game --local",
+    "test": "node --test tests/game.test.js",
+    "test:integration": "node tests/integration.js && node tests/archive.js",
+    "test:browser": "node tests/browser.js",
+    "check": "wrangler deploy --dry-run --outdir /tmp/family-day-worker-build",
+    "prepare:assets": "node scripts/prepare-assets.js",
+    "predev": "npm run prepare:assets",
+    "precheck": "npm run prepare:assets",
+    "pretest:integration": "npm run prepare:assets",
+    "pretest:browser": "npm run prepare:assets"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4"
+  }
+}
