@@ -96,6 +96,8 @@ with sync_playwright() as p:
     host.click('#retryHostBtn')
     expect(host.locator('#retryHostBtn')).to_be_hidden()
     expect(a.locator('#score')).to_have_text('520 分')
+    expect(host.locator('#adjustDelta')).to_have_value('')
+    expect(host.locator('#adjustReason')).to_have_value('')
     assert len({body['commandId'] for body in post_calls}) == 1
 
     # Skip cancellation preserves the question; confirming voids it, not its score history.
@@ -130,6 +132,14 @@ with sync_playwright() as p:
     assert adjustments[0]['data']['before'] == 260 and adjustments[0]['data']['after'] == 520
     for page in [a, b, host, screen]:
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    # Repeated network changes must settle on one current socket and preserve identity.
+    for _ in range(3):
+        a_ctx.set_offline(True)
+        a_ctx.set_offline(False)
+    expect(a.locator('#connection')).to_have_text('已連線', timeout=15000)
+    a.reload()
+    expect(a.locator('#score')).to_have_text('520 分')
+    expect(a.locator('#identity')).to_have_text('你的暱稱：甲')
     assert not errors, errors
     browser.close()
     print('PASS: pause/resume with offline pending answer, skip/adjust confirmations and cancellation, stale host preview, lost POST acknowledgment idempotency, final rank guard, mobile widths')

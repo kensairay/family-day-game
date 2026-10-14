@@ -1,9 +1,13 @@
 import {spawn, execFileSync} from 'node:child_process';
-import {mkdtemp, mkdir} from 'node:fs/promises';
+import {mkdtemp, mkdir, readdir} from 'node:fs/promises';
 import {join, resolve} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 export const HOST_KEY = 'local-integration-host-only';
 export async function withServer(run, {archiveReady = true} = {}) {
+  const localFiles=await readdir('.');
+  if(localFiles.some(name=>/^(\.env($|\.)|\.dev\.vars($|\.))/.test(name) && !name.endsWith('.example'))) {
+    throw new Error('验收不讀取真實環境／金鑰檔；請在沒有 .env 或 .dev.vars 的專案副本執行。');
+  }
   const artifacts=resolve('.test-artifacts');
   await mkdir(artifacts,{recursive:true});
   const directory=await mkdtemp(join(artifacts,'run-'));

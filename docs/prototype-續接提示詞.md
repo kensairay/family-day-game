@@ -93,3 +93,7 @@
 ## 2026-10-14 多人 MVP 核心
 
 已新增 Workers／Durable Object／D1 後端，與玩家／主持人／投影三種畫面；詳見 README 與 `docs/多人MVP開發與驗證.md`。上文純本機版本保留至 `prototype/index.html`，新的 `dist/` 是多人前端，必須搭配 `npm run dev` 的後端，不再以直接開啟 HTML 的方式驗證。尚未部署；暫停／跳題、補扣分與正式手機／網路彩排仍待完成。
+
+## 2026-10-15 自主控場開發
+
+本機分支 `feat/event-host-controls` 已增加暫停／恢復、附理由跳題與補扣分、預覽確認及獨立重試。先看 PROGRESS.md 接手，所有取捨見 DECISIONS.md；使用 npm run acceptance 重跑驗收。測試資料只在專案 .test-artifacts/ 保存、不刪除；不讀取實際環境／金鑰，不推送／部署。之前「暫停／跳題、補扣分待補」已被本節取代；真實手機／行動網路／正式平台容量與人工身份恢復仍待處理。

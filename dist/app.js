@@ -1,7 +1,7 @@
 const $ = id => document.getElementById(id);
 const role = document.body.dataset.role;
 let room, key='', state=null, socket, reconnectTimer, heartbeat, retryDelay=1000, busy=false, authenticated=false;
-let pendingAnswer=null, pendingCommand=null, lastPong=0, storageAvailable=true, actionPreview=null;
+let pendingAnswer=null, pendingCommand=null, lastPong=0, storageAvailable=true, actionPreview=null, lastHostPhase=null;
 const playerStorage = () => `family-day:player:${room}`;
 const hostStorage = () => `family-day:host:${room}`;
 const uuid = () => '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
@@ -63,6 +63,7 @@ function connect() {
   const protocol=location.protocol==='https:' ? 'wss:':'ws:';
   const current=new WebSocket(`${protocol}//${location.host}/api/rooms/${room}/ws`); socket=current;
   current.onopen=()=> {
+    if(current !== socket) return;
     lastPong=Date.now(); current.send(JSON.stringify({type:'auth',role,token:key}));
     heartbeat=setInterval(()=> {
       if(Date.now()-lastPong > 45000) { current.close(); return; }
@@ -70,6 +71,7 @@ function connect() {
     },20000);
   };
   current.onmessage=event=> {
+    if(current !== socket) return;
     if(event.data==='pong') {lastPong=Date.now();return;}
     try {
       const message=JSON.parse(event.data);
@@ -95,7 +97,7 @@ function connect() {
       connect();
     },delay);
   };
-  current.onerror=()=>current.close();
+  current.onerror=()=>{if(current === socket) current.close();};
 }
 function setBusy(value) { busy=value; render(); }
 async function sendAnswer() {
@@ -111,7 +113,12 @@ async function sendAnswer() {
 async function sendCommand() {
   if(!pendingCommand || busy) return;
   setBusy(true);
-  try { apply(await api('host',pendingCommand)); pendingCommand=null; saveIdentity(); notice('操作已完成'); }
+  try {
+    const action=pendingCommand.action;
+    apply(await api('host',pendingCommand)); pendingCommand=null; saveIdentity();
+    if(action==='adjust-score') {$('adjustDelta').value='';$('adjustReason').value='';}
+    notice(storageAvailable ? '操作已完成' : '操作已完成，但此瀏覽器無法保存身份，請避免重新整理。');
+  }
   catch(error) {
     notice(error.message);
     if(error.status && error.status<500) {pendingCommand=null;saveIdentity();}
@@ -192,6 +199,9 @@ function playerOptions(id) {
   if([...select.options].some(o=>o.value===selected)) select.value=selected;
 }
 function renderHostControls(q) {
+  if(lastHostPhase===null) $('inviteDetails').open=state.phase==='waiting';
+  else if(lastHostPhase==='waiting' && state.phase!=='waiting') $('inviteDetails').open=false;
+  lastHostPhase=state.phase;
   const locked=busy || Boolean(pendingCommand);
   for(const [id,phases] of [
     ['startBtn',['waiting']],['revealBtn',['open']],['nextBtn',['revealed','skipped']],
@@ -287,7 +297,7 @@ $('confirmActionBtn')?.addEventListener('click',()=> {
 $('cancelActionBtn')?.addEventListener('click',()=>{actionPreview=null;$('confirmationPanel').hidden=true;});
 $('finalRankPanel')?.addEventListener('submit',event=>{event.preventDefault();hostAction('final-rank',{playerId:$('finalPlayer').value,rank:Number($('finalRank').value)});});
 $('logoutBtn')?.addEventListener('click',()=> {
-  authenticated=false;closeSocket();key='';pendingCommand=null;actionPreview=null;$('confirmationPanel').hidden=true;
+  authenticated=false;closeSocket();key='';pendingCommand=null;actionPreview=null;lastHostPhase=null;$('confirmationPanel').hidden=true;
   try{sessionStorage.removeItem(hostStorage());}catch{}
   state=null;$('gamePanel').hidden=true;$('loginPanel').hidden=false;connection('已登出主持人');
 });
