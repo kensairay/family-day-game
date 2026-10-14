@@ -1,9 +1,12 @@
 """Run with npm run test:browser (isolated local Workers/DO/D1 state)."""
 import os
+from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
 
 BASE = os.environ["GAME_URL"]
 HOST_KEY = os.environ["GAME_HOST_KEY"]
+ARTIFACTS = Path('.test-artifacts/browser')
+ARTIFACTS.mkdir(parents=True, exist_ok=True)
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True)
     host_context = browser.new_context()
@@ -35,7 +38,7 @@ with sync_playwright() as p:
     expect(a.locator("#feedback")).to_contain_text("已收到")
     expect(a.locator("#score")).to_have_text("0 分")
     assert a.locator(".correct").count() == 0
-    a.screenshot(path="/tmp/family-day-player.png", full_page=True)
+    a.screenshot(path=str(ARTIFACTS / "family-day-player.png"), full_page=True)
     # Background/offline recovery must retain identity and receipt.
     first.set_offline(True)
     first.set_offline(False)
@@ -47,7 +50,7 @@ with sync_playwright() as p:
     expect(b.locator("#score")).to_have_text("0 分")
     expect(b.locator("#feedback")).to_contain_text("未作答")
     expect(screen.locator(".correct")).to_have_count(1)
-    screen.screenshot(path="/tmp/family-day-screen.png", full_page=True)
+    screen.screenshot(path=str(ARTIFACTS / "family-day-screen.png"), full_page=True)
     for i, choice in enumerate([None, 1, 3, 0, 2, 1, 1, 2, 3]):
         if i == 0:
             continue

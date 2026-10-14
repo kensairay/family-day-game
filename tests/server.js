@@ -1,13 +1,14 @@
 import {spawn, execFileSync} from 'node:child_process';
-import {mkdtemp, rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {mkdtemp, mkdir} from 'node:fs/promises';
+import {join, resolve} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 export const HOST_KEY = 'local-integration-host-only';
 export async function withServer(run, {archiveReady = true} = {}) {
-  const directory=await mkdtemp(join(tmpdir(),'family-day-tests-'));
+  const artifacts=resolve('.test-artifacts');
+  await mkdir(artifacts,{recursive:true});
+  const directory=await mkdtemp(join(artifacts,'run-'));
   const cli='node_modules/wrangler/bin/wrangler.js';
-  const env={...process.env,CLOUDFLARE_SEND_METRICS:'false'};
+  const env={...process.env,CLOUDFLARE_SEND_METRICS:'false',XDG_CONFIG_HOME:join(artifacts,'config'),WRANGLER_LOG_PATH:join(directory,'wrangler.log')};
   const url='http://localhost:8790';
   let server, output='';
   async function stop() {
@@ -38,5 +39,5 @@ export async function withServer(run, {archiveReady = true} = {}) {
       restoreArchive:async()=>{await stop();migrateArchive();await start();}
     });
   } catch(error) {console.error(output.slice(-5000));throw error;}
-  finally {await stop();await rm(directory,{recursive:true,force:true});}
+  finally {await stop();console.log(`Local test artifacts retained: ${directory}`);}
 }
