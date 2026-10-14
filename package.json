@@ -15,7 +15,9 @@
     "pretest:integration": "npm run prepare:assets",
     "pretest:browser": "npm run prepare:assets",
     "test:controls": "node tests/controls-integration.js",
-    "pretest:controls": "npm run prepare:assets"
+    "pretest:controls": "npm run prepare:assets",
+    "test:controls:browser": "node tests/controls-browser.js",
+    "pretest:controls:browser": "npm run prepare:assets"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
