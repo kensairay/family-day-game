@@ -3,7 +3,7 @@ import {QUESTIONS, POINTS, ROUNDS} from './questions.js';
 export class GameError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
-export const freshGame = () => ({phase:'waiting', index:0, version:0, revision:0, players:[], answers:{}, commands:[]});
+export const freshGame = () => ({phase:'waiting', index:0, version:0, revision:0, players:[], answers:{}, commands:[], commandRecords:[], voided:false});
 export const currentQuestion = state => QUESTIONS[state.index];
 export function getPlayer(state, token) {
   return state.players.find(p => p.token === token);
@@ -31,19 +31,56 @@ export function answer(state, player, {questionId, choice}, now = new Date().toI
   // Retry after reveal still returns the original receipt, but never accepts a new answer.
   const receipt = state.answers[player.id];
   if (receipt) return null;
+  if (state.phase === 'paused') throw new GameError('遊戲暫停，恢復後會重新送出答案', 423);
   if (state.phase !== 'open') throw new GameError('本題已停止收答案', 409);
   state.answers[player.id] = {choice, receivedAt:now}; state.version++;
   return {kind:'answered', at:now, data:{playerId:player.id, questionId, choice}};
 }
+function operationReason(value) {
+  if (typeof value !== 'string' || !value.trim() || Array.from(value.trim()).length > 120) throw new GameError('請填寫 1～120 字的操作理由');
+  return value.trim();
+}
+function fingerprint(body) {
+  return JSON.stringify({action:body.action, revision:body.revision, playerId:body.playerId ?? null,
+    rank:body.rank ?? null, delta:body.delta ?? null, reason:body.reason ?? null});
+}
 export function command(state, body, now = new Date().toISOString()) {
   if (typeof body.commandId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.commandId)) throw new GameError('無效的主持人操作識別碼');
-  if (state.commands.includes(body.commandId)) return null;
+  const intent = fingerprint(body);
+  if (state.commands.includes(body.commandId)) {
+    const previous = (state.commandRecords || []).find(record => record.id === body.commandId);
+    if (previous && previous.intent !== intent) throw new GameError('同一操作識別碼不能用於不同內容', 409);
+    return null;
+  }
   if (body.revision !== state.revision) throw new GameError('進度已更新，請確認最新畫面再操作', 409);
   const action = body.action;
   let data = {action};
   if (action === 'start') {
     if (state.phase !== 'waiting') throw new GameError('遊戲已開始', 409);
     state.phase = 'open';
+  } else if (action === 'pause') {
+    if (state.phase !== 'open') throw new GameError('只能暫停正在收答案的題目', 409);
+    state.phase = 'paused';
+    data = {...data, questionId:currentQuestion(state).id};
+  } else if (action === 'resume') {
+    if (state.phase !== 'paused') throw new GameError('目前沒有暫停中的題目', 409);
+    state.phase = 'open';
+    data = {...data, questionId:currentQuestion(state).id};
+  } else if (action === 'skip') {
+    if (!['open','paused'].includes(state.phase)) throw new GameError('只能跳過正在作答或暫停的題目', 409);
+    const reason = operationReason(body.reason);
+    state.phase = 'skipped'; state.voided = true;
+    data = {...data, questionId:currentQuestion(state).id, reason};
+  } else if (action === 'adjust-score') {
+    if (!['paused','revealed','skipped','finished'].includes(state.phase)) throw new GameError('請先暫停或收題，再調整分數', 409);
+    if (state.players.some(p => p.finalRank !== null)) throw new GameError('已登記決勝名次，不能再調整積分', 409);
+    const player = state.players.find(p => p.id === body.playerId);
+    const reason = operationReason(body.reason);
+    if (!player || !Number.isSafeInteger(body.delta) || body.delta === 0 || Math.abs(body.delta) > 10000) throw new GameError('請選擇玩家並輸入非零整數分數（最多正負 10000 分）');
+    const before = player.score, after = before + body.delta;
+    if (!Number.isSafeInteger(after) || after < 0 || after > 1000000) throw new GameError('調整後分數必須介於 0～1000000 分');
+    player.score = after;
+    data = {...data, playerId:player.id, before, delta:body.delta, after, reason};
   } else if (action === 'reveal') {
     if (state.phase !== 'open') throw new GameError('目前沒有開放作答的題目', 409);
     state.phase = 'revealed';
@@ -51,9 +88,9 @@ export function command(state, body, now = new Date().toISOString()) {
     for (const p of state.players) if (state.answers[p.id]?.choice === correct) p.score += POINTS;
     data = {...data, questionId:currentQuestion(state).id, correct, scores:state.players.map(p => ({playerId:p.id, score:p.score}))};
   } else if (action === 'next') {
-    if (state.phase !== 'revealed') throw new GameError('請先公布答案', 409);
+    if (!['revealed','skipped'].includes(state.phase)) throw new GameError('請先公布答案或確認跳題', 409);
     if (state.index === QUESTIONS.length - 1) state.phase = 'finished';
-    else { state.index++; state.answers = {}; state.phase = 'open'; }
+    else { state.index++; state.answers = {}; state.phase = 'open'; state.voided = false; }
   } else if (action === 'final-rank') {
     if (state.phase !== 'finished') throw new GameError('請在遊戲結束後登記決勝名次', 409);
     const player = state.players.find(p => p.id === body.playerId);
@@ -64,6 +101,7 @@ export function command(state, body, now = new Date().toISOString()) {
   } else throw new GameError('不支援的主持人操作');
   state.revision++; state.version++;
   state.commands.push(body.commandId); state.commands = state.commands.slice(-32);
+  state.commandRecords = [...(state.commandRecords || []), {id:body.commandId, intent}].slice(-32);
   return {kind:'host-command', at:now, data};
 }
 export function leaderboard(state) {
@@ -77,16 +115,16 @@ export function leaderboard(state) {
 }
 export function snapshot(state, role = 'screen', player = null) {
   const q = currentQuestion(state);
-  const revealed = ['revealed','finished'].includes(state.phase);
+  const revealed = ['revealed','finished'].includes(state.phase) && !state.voided;
   return {
-    version:state.version, revision:state.revision, phase:state.phase, points:POINTS,
+    version:state.version, revision:state.revision, phase:state.phase, points:POINTS, voided:Boolean(state.voided),
     roundCount:ROUNDS.length, questionCount:QUESTIONS.length, position:state.index+1,
     question:state.phase === 'waiting' ? null : {
       id:q.id, text:q.text, options:q.options, round:q.round, number:q.number, roundName:q.roundName,
       ...(revealed ? {correct:q.correct} : {})
     },
     ...(role !== 'player' ? {playerCount:state.players.length, answeredCount:Object.keys(state.answers).length} : {}),
-    leaderboard:revealed ? leaderboard(state) : [],
+    leaderboard:(role === 'host' || revealed || ['skipped','finished'].includes(state.phase)) ? leaderboard(state) : [],
     ...(player ? {me:{id:player.id, name:player.name, score:player.score, finalRank:player.finalRank, answer:state.answers[player.id] ?? null}} : {})
   };
 }
