@@ -193,3 +193,17 @@
 - 自我審查：題意與正解唯一性已逐題核對，未放入公司私密或時效資訊；測試題偏簡單，供流程彩排，並非正式競賽難度設計。未變更遊戲程式，因此未重跑與本次內容無關的全套容量測試。
 - 已知限制：本次是實際解析器及核心流程驗證，不宣稱已完成線上匯入或正式環境容量測試。Excel 含正解，僅提供主持人保管。
 - 下一步：下載此檔，於支援 Excel 匯入的主持人頁面，開始前匯入、預覽並發布；新增功能仍待推送與部署。卡點：無。
+
+### M9｜授權部署（進行中）
+
+- 使用者已於 2026-10-17 授權部署。計畫：重新執行完整 acceptance、確認 Cloudflare 身分與既有設定，發布已驗收分支，部署後唯讀檢查公開頁面與題庫下載。
+- 驗收：npm run acceptance 全數通過；GitHub 遠端檔案樹與本機一致；正式網址提供新版主持人頁面、Excel parser 與 24 題檔案。
+- 保護：不重設 HOST_KEY，不建立付費訂閱，不清空場次、不覆寫未知的 ROOM_CODE；沒有部署權限時如實記錄並提供可執行交接。
+
+### M9｜部署前驗收完成，Cloudflare 身分卡點
+
+- 實際重跑 npm run acceptance：PASS 9/9；報告 .test-artifacts/acceptance-DjVrvV/RESULTS.md。包含 26 項單元、Excel／場次 API 與瀏覽器、控場、350 玩家與 D1 恢復、既有瀏覽器、dry-run 及 diff 檢查。
+- Cloudflare 身分檢查：wrangler whoami 明確回覆「You are not authenticated」；環境 readiness 亦無 Cloudflare 身分或 secret 綁定。沒有登入或使用臨時帳戶部署，也未讀取或改寫登入碼。
+- GitHub 發布準備曾受 git pager 污染輸出而解析失敗；改用 git --no-pager 並逐 commit 讀取，核對四個里程碑的本機 tree SHA，避免遺漏提交。此為發布資料準備問題，非測試失敗。
+- 已補上 Windows PowerShell 部署步驟（docs/Excel題庫與場次操作.md），保留使用者本機 D1 ID，使用 --keep-vars 保留線上 ROOM_CODE；不需要 HOST_KEY 重設或 D1 migration。
+- 進行中：發布 feat/question-bank-and-sessions 並核對遠端 tree；下一步須由已登入的使用者電腦執行 wrangler deploy --keep-vars，再驗證新版正式頁面。不得將 GitHub 發布宣稱為正式網站部署完成。

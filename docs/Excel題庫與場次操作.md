@@ -45,3 +45,21 @@
 程式發布至 GitHub 並取得這個版本後，在自己的專案保留原本的 D1 ID、ROOM_CODE 與 Worker 名稱，執行 `npm ci`、`npm run check`，再依授權部署。此功能沒有新增資料庫 migration、binding 或登入碼，不必重設 HOST_KEY。
 
 首次更新後，主持人、投影及手機都先重新整理一次載入新介面。之後每次建立新場不再需要更新程式。請先完成舊彩排再更新，確認舊場可匯出後才開始正式場。
+
+### 在已登入 Cloudflare 的 Windows 電腦部署
+
+在既有專案資料夾開啟 PowerShell，逐行執行；前一步失敗就先停止，不要接著部署：
+
+```powershell
+git fetch origin
+git switch --track origin/feat/question-bank-and-sessions
+npm ci
+npm run check
+npx wrangler deploy --keep-vars
+```
+
+如果已經有本機 `feat/question-bank-and-sessions` 分支，第二行改成 `git switch feat/question-bank-and-sessions`，再執行 `git pull --ff-only origin feat/question-bank-and-sessions`。
+
+切換分支前後都保留自己已設定的 `wrangler.jsonc`；如 Git 提示衝突就停止，勿用強制覆寫。部署前確認 Worker 名稱仍是 `family-day-game`，D1 的 `DB` binding 使用自己的實際 database_id（不可為全零）。`--keep-vars` 保留線上的 ROOM_CODE 等一般變數；既有 HOST_KEY secret 不需重新設定。此更新不需要再跑 D1 migration。
+
+完成後開啟 `https://family-day-game.ompstw.workers.dev/host.html` 並重新整理，確認有題庫匯入與建立新場次控制項。公開測試檔位於 `https://family-day-game.ompstw.workers.dev/question-bank-test-24.xlsx`。在等待中的場次先匯入、預覽 24 題（各回合 8 題），再發布；部署不會自動替換目前場次題庫，也不會自動建立新場。
