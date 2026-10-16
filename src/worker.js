@@ -1,18 +1,19 @@
 import {DurableObject} from 'cloudflare:workers';
-import {freshGame, join, answer, command, snapshot, getPlayer, GameError} from './game.js';
+import {freshGame, join, answer, command, snapshot, getPlayer, GameError, questionsFor, sessionFor} from './game.js';
+
+import {validateBank,BankValidationError} from '../shared/question-bank.js';
 
 const json = (data, status = 200) => Response.json(data, {status, headers:{'Cache-Control':'no-store'}});
 const bearer = req => req.headers.get('Authorization')?.replace(/^Bearer /, '') || '';
 const validHost = (env, key) => typeof env.HOST_KEY === 'string' && env.HOST_KEY.length >= 16 && key === env.HOST_KEY;
-async function readBody(request) {
-  if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new GameError('請使用 JSON 請求', 415);
-  const bytes = await request.arrayBuffer();
-  if (bytes.byteLength > 4096) throw new GameError('請求內容過大', 413);
-  try {
-    const body = JSON.parse(new TextDecoder().decode(bytes));
-    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error();
-    return body;
-  } catch { throw new GameError('無效的請求內容'); }
+async function readBody(request,limit=4096) {
+  if (!request.headers.get('Content-Type')?.startsWith('application/json')) throw new GameError('請使用 JSON 請求',415);
+  if(Number(request.headers.get('Content-Length'))>limit)throw new GameError('請求內容過大',413);
+  const reader=request.body?.getReader(),chunks=[];let size=0;
+  if(reader)while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>limit){await reader.cancel();throw new GameError('請求內容過大',413);}chunks.push(value);}
+  const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+  try{const body=JSON.parse(new TextDecoder().decode(bytes));if(!body||typeof body!=='object'||Array.isArray(body))throw new Error();return body;}
+  catch{throw new GameError('無效的請求內容');}
 }
 
 export default {
@@ -23,8 +24,8 @@ export default {
       return env.ASSETS.fetch(new Request(url, request));
     }
     if (request.headers.has('Origin') && request.headers.get('Origin') !== url.origin) return json({error:'不接受跨網站請求'}, 403);
-    if (url.pathname === '/api/config' && request.method === 'GET') return json({room:env.ROOM_CODE || 'family-day'});
-    const match = url.pathname.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/(join|state|answer|host|export|ws)$/);
+    if (url.pathname === '/api/config' && request.method === 'GET') return env.ROOMS.get(env.ROOMS.idFromName(env.ROOM_CODE || 'family-day')).fetch(new Request(new URL('/info',url),request));
+    const match = url.pathname.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/(join|state|answer|host|export|sessions|ws)$/);
     if (!match || match[1] !== (env.ROOM_CODE || 'family-day')) return json({error:'找不到活動房間'}, 404);
     return env.ROOMS.get(env.ROOMS.idFromName(match[1])).fetch(request);
   }
@@ -36,8 +37,8 @@ export class GameRoom extends DurableObject {
     this.archivePending = 0; this.archiveError = false; this.progressTimer = null;
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     ctx.blockConcurrencyWhile(async () => {
-      const values = await ctx.storage.get(['meta','players','answers']);
-      this.state = values.has('meta') ? {...values.get('meta'), players:values.get('players'), answers:values.get('answers')} : freshGame();
+      const values = await ctx.storage.get(['meta','players','answers','bank']);
+      this.state = values.has('meta') ? {...values.get('meta'), players:values.get('players'), answers:values.get('answers'),bank:values.get('bank') || undefined} : freshGame();
       this.archivePending = (await ctx.storage.list({prefix:'outbox:'})).size;
       if (this.archivePending) await ctx.storage.setAlarm(Date.now()+1000);
     });
@@ -49,7 +50,7 @@ export class GameRoom extends DurableObject {
     return this.serial(async () => {
       try { return await this.handle(request); }
       catch (error) {
-        if (error instanceof GameError) return json({error:error.message}, error.status);
+        if (error instanceof GameError || error instanceof BankValidationError) return json({error:error.message,...(error.details?{details:error.details}:{})},error.status);
         console.error('Room request failed'); return json({error:'服務暫時無法處理，請稍後重試'}, 503);
       }
     });
@@ -67,6 +68,7 @@ export class GameRoom extends DurableObject {
     const url = new URL(request.url), path = url.pathname.split('/').at(-1);
     const role = url.searchParams.get('role') || 'player';
     const token = bearer(request);
+    if(path==='info'&&request.method==='GET')return json({room:this.env.ROOM_CODE || 'family-day',sessionId:sessionFor(this.state),sessionTitle:this.state.sessionTitle || '初始場次'});
     if (path === 'ws' && request.method === 'GET' && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
       if (this.ctx.getWebSockets().length >= 400) throw new GameError('連線暫時已滿，請稍後重試', 503);
       const pair = new WebSocketPair();
@@ -90,15 +92,35 @@ export class GameRoom extends DurableObject {
       return json(this.view('player', getPlayer(this.state, player.token)));
     }
     if (path === 'host' && request.method === 'POST') {
-      this.authorize('host', token); const body = await readBody(request);
+      this.authorize('host', token); const body = await readBody(request,128*1024);
+      if(body.action==='import-bank') {
+        body.bank=validateBank(body.bank);
+        const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(body.bank)));
+        body.bankDigest=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+      }
       await this.mutate(s => command(s, body)); return json(this.view('host'));
+    }
+    if(path==='sessions'&&request.method==='GET') {
+      this.authorize('host',token);
+      const histories=await this.ctx.storage.list({prefix:'history:'});
+      const sessions=[...histories.entries()].filter(([key])=>key.endsWith(':meta')).map(([,m])=>({id:m.sessionId,title:m.sessionTitle,phase:m.phase,playerCount:m.playerCount,closedAt:m.closedAt}));
+      sessions.push({id:sessionFor(this.state),title:this.state.sessionTitle || '初始場次',phase:this.state.phase,playerCount:this.state.players.length,current:true});
+      return json({sessions});
     }
     if (path === 'export' && request.method === 'GET') {
       this.authorize('host', token);
-      const archived = await this.env.DB.prepare('SELECT event_id, occurred_at, kind, payload FROM game_events WHERE room = ? ORDER BY event_id').bind(this.env.ROOM_CODE || 'family-day').all();
+      const id=url.searchParams.get('sessionId') || sessionFor(this.state);
+      let source=this.state;
+      if(id!==sessionFor(this.state)) {
+        if(!/^(legacy|[0-9a-f-]{36})$/.test(id))throw new GameError('找不到場次',404);
+        const prefix=`history:${id}:`,stored=await this.ctx.storage.get([prefix+'meta',prefix+'players',prefix+'answers']);
+        if(!stored.has(prefix+'meta'))throw new GameError('找不到場次',404);
+        source={...stored.get(prefix+'meta'),players:stored.get(prefix+'players'),answers:stored.get(prefix+'answers')};
+      }
+      const archived = await this.env.DB.prepare("SELECT event_id, occurred_at, kind, payload FROM game_events WHERE room = ? AND (json_extract(payload, '$.sessionId') = ? OR (? = 'legacy' AND json_extract(payload, '$.sessionId') IS NULL)) ORDER BY event_id").bind(this.env.ROOM_CODE || 'family-day',id,id).all();
       const events = new Map(archived.results.map(row => [row.event_id, {id:row.event_id, at:row.occurred_at, kind:row.kind, data:JSON.parse(row.payload)}]));
-      for (const event of (await this.ctx.storage.list({prefix:'outbox:'})).values()) events.set(event.id, event);
-      return json({room:this.env.ROOM_CODE || 'family-day', state:this.view('host'), players:this.state.players.map(({token:secret,...p}) => p), events:[...events.values()].sort((a,b) => a.id-b.id)});
+      for (const event of (await this.ctx.storage.list({prefix:'outbox:'})).values()) if((event.data.sessionId || 'legacy')===id)events.set(event.id,event);
+      return json({room:this.env.ROOM_CODE || 'family-day',sessionId:id,state:snapshot(source,'host'),bank:questionsFor(source),players:source.players.map(({token:secret,...p}) => p),events:[...events.values()].sort((a,b)=>a.id-b.id)});
     }
     throw new GameError('找不到這項操作', 404);
   }
@@ -112,11 +134,19 @@ export class GameRoom extends DurableObject {
     const next = structuredClone(this.state), event = fn(next);
     if (!event) return;
     event.id = next.version;
-    const {players, answers, ...meta} = next;
+    const {players, answers, bank, ...meta} = next;
+    event.data={...event.data,sessionId:sessionFor(next)};
     // Separate values keep a 350-player room below per-value storage limits.
     if (!await this.ctx.storage.getAlarm()) await this.ctx.storage.setAlarm(Date.now()+1000);
     await this.ctx.storage.transaction(async tx => {
-      await tx.put({meta, players, answers, [`outbox:${String(event.id).padStart(10,'0')}`]:event});
+      if(event.data.action==='new-session') {
+        const previous=this.state,prefix=`history:${sessionFor(previous)}:`;
+        await tx.put({
+          [prefix+'meta']:{phase:previous.phase,index:previous.index,voided:previous.voided || false,version:previous.version,revision:previous.revision,sessionId:sessionFor(previous),sessionTitle:previous.sessionTitle || '初始場次',bank:questionsFor(previous),playerCount:previous.players.length,closedAt:event.at},
+          [prefix+'players']:previous.players.map(({token:secret,...p})=>p),[prefix+'answers']:previous.answers
+        });
+      }
+      await tx.put({meta,players,answers,bank:questionsFor(next),[`outbox:${String(event.id).padStart(10,'0')}`]:event});
     });
     this.state = next; this.archivePending++;
     if (mode === 'progress' || event.kind === 'joined') this.scheduleProgress();
@@ -135,6 +165,7 @@ export class GameRoom extends DurableObject {
         const attachment = ws.deserializeAttachment();
         if (!attachment || !roles.includes(attachment.role)) continue;
         const p = this.state.players.find(p => p.id === attachment.playerId);
+        if(attachment.role==='player'&&!p){ws.send(JSON.stringify({type:'session-changed',sessionId:sessionFor(this.state),sessionTitle:this.state.sessionTitle}));ws.close(4001,'請加入新場次');continue;}
         ws.send(JSON.stringify({type:'state', state:this.view(attachment.role, p)}));
       } catch { try { ws.close(1011, '請重新連線'); } catch {} }
     }

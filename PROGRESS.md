@@ -113,3 +113,30 @@
 - 已以 GitHub 讀取回驗分支指向與程式 tree；main 仍為 `8af0dda`，沒有合併、部署或建立雲端資源。
 - 另補一筆文件交接 commit，更新本檔、DECISIONS.md 與 README；不變更程式。
 - 測試者請下載／切換 `feat/event-host-controls`，依 README 啟動或執行 `npm run acceptance`。GitHub 原始碼頁並不是可直接遊玩的網站。
+
+## 2026-10-16｜Excel 題庫與新場次（本輪進行中）
+
+- 目標：主持人下載 .xlsx 範本、匯入／驗證／預覽正式題庫；不改 ROOM_CODE 即可建立新場次。
+- M4 計畫與先行驗收：先新增規則測試，驗證三回合可變題數、無效題庫拒絕、未開始才可匯入、新場次清空當場分數但保留舊資料、重送不多開一場。
+- M5 後端：將題庫固定保存於當場，擴展主持人操作；單一既有 DO 保留多場歷史，以 sessionId 隔離答案，version／revision 持續遞增；不新增雲端 binding／資料庫 migration。
+- M6 前端與 Excel：下載真實 Excel 範本；背景解析 .xlsx、逐列錯誤、確認後發布；新場次確認、舊手機提示重新加入、歷史場次下載。
+- M7 實際整合與瀏覽器驗收：匯入後完整三回合、非三題回合、格式錯誤／開始後拒絕、重新整理與服務重啟、新場次重試、離線舊答案不計分、歷史分數與題庫保留；全部舊驗收回歸。
+- 依賴：只評估官方 npm 的已知開源 Excel 讀取套件，鎖定版本；現有 openpyxl 產生範本與測試檔，不安裝其他 Python 套件。
+- 安全邊界：只在專案內操作；不讀寫實際金鑰、不刪檔、不推送或部署；所有驗收資料保留 .test-artifacts/。
+- 目前：已檢查乾淨工作目錄與既有架構；正在補規則及驗收。
+- 下一步：先執行新規則測試取得預期 RED，再小步實作與 commit。
+
+### M4／M5 實際驗收進度
+
+- 規則 RED：新增 question-bank-sessions.test.js，實際失敗為 shared/question-bank.js 尚不存在；只執行一次，紀錄在 .test-artifacts/bank-sessions-red.log。
+- API RED：新增 bank-sessions-integration.js，實際失敗為 import-bank 缺少伺服器 digest；未刪除或修改驗收期待值，紀錄在 .test-artifacts/bank-sessions-api-red.log。
+- 規則 GREEN：npm test 20/20 通過，包含原 14 項及新增 6 項。
+- 新 API GREEN：實際通過權限、SHA-256 題庫指紋、可變題數、開始鎖定、服務重啟、新場次重送、舊資料匯出及舊答案隔離。
+- 已驗證新依賴來源：read-excel-file 9.3.12，MIT，官方 npm 指向 catamphetamine/read-excel-file，版本已鎖定；沒有讀取實際金鑰。
+- 下一步：跑舊整合回歸並提交後端里程碑，再做 Excel 背景解析與主持人表單。
+
+### M5 後端里程碑完成
+
+- 實際執行 npm run test:controls、npm run test:integration、git diff --check：全部通過；原 350 人、D1 故障、重啟與控場功能未退化。
+- 新場題庫獨立持久化，舊場 players／answers／bank 在同一 DO transaction 保存；D1 事件用 sessionId 篩選，不改既有 schema。
+- 本輪下一步：M6 Excel 真實範本、受限背景解析與主持人新場介面；M7 全套回歸仍未完成，不宣稱交付。

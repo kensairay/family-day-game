@@ -18,12 +18,15 @@
     "pretest:controls": "npm run prepare:assets",
     "test:controls:browser": "node tests/controls-browser.js",
     "pretest:controls:browser": "npm run prepare:assets",
-    "acceptance": "node scripts/acceptance.js"
+    "acceptance": "node scripts/acceptance.js",
+    "test:bank-sessions": "node tests/bank-sessions-integration.js",
+    "pretest:bank-sessions": "npm run prepare:assets"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
   },
   "dependencies": {
-    "qrcode-generator": "^2.0.4"
+    "qrcode-generator": "^2.0.4",
+    "read-excel-file": "9.3.12"
   }
 }

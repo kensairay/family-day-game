@@ -1,10 +1,16 @@
-import {QUESTIONS, POINTS, ROUNDS} from './questions.js';
+import {QUESTIONS, POINTS} from './questions.js';
+import {validateBank} from '../shared/question-bank.js';
 
 export class GameError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
-export const freshGame = () => ({phase:'waiting', index:0, version:0, revision:0, players:[], answers:{}, commands:[], commandRecords:[], voided:false});
-export const currentQuestion = state => QUESTIONS[state.index];
+export const freshGame = () => ({phase:'waiting', index:0, version:0, revision:0, players:[], answers:{}, commands:[], commandRecords:[], voided:false, bank:structuredClone(QUESTIONS), sessionId:'legacy', sessionTitle:'初始場次', sessionCreatedAt:null});
+export const questionsFor = state => state.bank || QUESTIONS;
+export const sessionFor = state => state.sessionId || 'legacy';
+export const currentQuestion = state => {
+ const q=questionsFor(state)[state.index];
+ return {...q,id:sessionFor(state)==='legacy'?q.id:`${sessionFor(state)}:${q.id}`};
+};
 export function getPlayer(state, token) {
   return state.players.find(p => p.token === token);
 }
@@ -42,7 +48,7 @@ function operationReason(value) {
 }
 function fingerprint(body) {
   return JSON.stringify({action:body.action, revision:body.revision, playerId:body.playerId ?? null,
-    rank:body.rank ?? null, delta:body.delta ?? null, reason:body.reason ?? null});
+    rank:body.rank ?? null, delta:body.delta ?? null, reason:body.reason ?? null, title:body.title ?? null, bankDigest:body.bankDigest ?? null});
 }
 export function command(state, body, now = new Date().toISOString()) {
   if (typeof body.commandId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.commandId)) throw new GameError('無效的主持人操作識別碼');
@@ -55,7 +61,19 @@ export function command(state, body, now = new Date().toISOString()) {
   if (body.revision !== state.revision) throw new GameError('進度已更新，請確認最新畫面再操作', 409);
   const action = body.action;
   let data = {action};
-  if (action === 'start') {
+  if (action === 'import-bank') {
+    if (state.phase !== 'waiting') throw new GameError('遊戲開始後不能修改題庫',409);
+    if (typeof body.bankDigest !== 'string' || !/^[0-9a-f]{64}$/.test(body.bankDigest)) throw new GameError('缺少伺服器題庫校驗');
+    state.bank=validateBank(body.bank);state.index=0;
+    data={...data,questionCount:state.bank.length,bankDigest:body.bankDigest};
+  } else if (action === 'new-session') {
+    if (state.phase !== 'finished' && !(state.phase==='waiting' && state.players.length===0)) throw new GameError('請先結束本場，再建立新場次',409);
+    const title=typeof body.title==='string'?body.title.trim():'';
+    if(!title||Array.from(title).length>40)throw new GameError('請填寫 1～40 字的場次名稱');
+    const previousSessionId=sessionFor(state),bank=structuredClone(questionsFor(state));
+    Object.assign(state,{phase:'waiting',index:0,players:[],answers:{},voided:false,bank,sessionId:crypto.randomUUID(),sessionTitle:title,sessionCreatedAt:now});
+    data={...data,previousSessionId,sessionId:state.sessionId,title};
+  } else if (action === 'start') {
     if (state.phase !== 'waiting') throw new GameError('遊戲已開始', 409);
     state.phase = 'open';
   } else if (action === 'pause') {
@@ -89,7 +107,7 @@ export function command(state, body, now = new Date().toISOString()) {
     data = {...data, questionId:currentQuestion(state).id, correct, scores:state.players.map(p => ({playerId:p.id, score:p.score}))};
   } else if (action === 'next') {
     if (!['revealed','skipped'].includes(state.phase)) throw new GameError('請先公布答案或確認跳題', 409);
-    if (state.index === QUESTIONS.length - 1) state.phase = 'finished';
+    if (state.index === questionsFor(state).length - 1) state.phase = 'finished';
     else { state.index++; state.answers = {}; state.phase = 'open'; state.voided = false; }
   } else if (action === 'final-rank') {
     if (state.phase !== 'finished') throw new GameError('請在遊戲結束後登記決勝名次', 409);
@@ -118,11 +136,13 @@ export function snapshot(state, role = 'screen', player = null) {
   const revealed = ['revealed','finished'].includes(state.phase) && !state.voided;
   return {
     version:state.version, revision:state.revision, phase:state.phase, points:POINTS, voided:Boolean(state.voided),
-    roundCount:ROUNDS.length, questionCount:QUESTIONS.length, position:state.index+1,
+    sessionId:sessionFor(state),sessionTitle:state.sessionTitle || '初始場次',
+    roundCount:new Set(questionsFor(state).map(q=>q.round)).size, questionCount:questionsFor(state).length, position:state.index+1,
     question:state.phase === 'waiting' ? null : {
-      id:q.id, text:q.text, options:q.options, round:q.round, number:q.number, roundName:q.roundName,
+      id:q.id, text:q.text, options:q.options, round:q.round, number:q.number, roundName:q.roundName,lastInRound:questionsFor(state)[state.index+1]?.round!==q.round,
       ...(revealed ? {correct:q.correct} : {})
     },
+    ...(role === 'host' ? {bankSummary:{questionCount:questionsFor(state).length,rounds:[1,2,3].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
     ...(role !== 'player' ? {playerCount:state.players.length, answeredCount:Object.keys(state.answers).length} : {}),
     leaderboard:(role === 'host' || revealed || ['skipped','finished'].includes(state.phase)) ? leaderboard(state) : [],
     ...(player ? {me:{id:player.id, name:player.name, score:player.score, finalRank:player.finalRank, answer:state.answers[player.id] ?? null}} : {})
