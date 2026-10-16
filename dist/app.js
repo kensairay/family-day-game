@@ -45,6 +45,7 @@ function apply(value) {
     actionPreview=null;bankPreview=null;lastHostPhase=null;
     if($('confirmationPanel'))$('confirmationPanel').hidden=true;
     if($('bankPreview'))$('bankPreview').replaceChildren();
+    if($('bankFile'))$('bankFile').value='';
     if($('bankStatus'))$('bankStatus').textContent='';
   }
   state=value;sessionId=value.sessionId || 'legacy';
@@ -131,7 +132,7 @@ async function sendCommand() {
   try {
     const action=pendingCommand.action;
     apply(await api('host',pendingCommand)); pendingCommand=null; saveIdentity();
-    if(action==='import-bank'){bankPreview=null;$('bankPreview').replaceChildren();$('bankStatus').textContent='題庫已發布並保存。';}
+    if(action==='import-bank'){$('bankFile').value='';bankPreview=null;$('bankPreview').replaceChildren();$('bankStatus').textContent='題庫已發布並保存。';}
     if(action==='new-session'){await refreshSessions();$('sessionTitle').value='';}
     if(action==='adjust-score') {$('adjustDelta').value='';$('adjustReason').value='';}
     notice(storageAvailable ? '操作已完成' : '操作已完成，但此瀏覽器無法保存身份，請避免重新整理。');

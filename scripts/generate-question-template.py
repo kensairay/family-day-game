@@ -39,7 +39,7 @@ def workbook(rows):
         '保留第 1 列八個欄位名稱與「題庫」工作表名稱。',
         '依回合 1、2、3 排列，每回合 1～20 題，同一回合名稱一致。',
         '四個選項皆需填寫且不可重複；正確答案填 A、B、C 或 D。',
-        '回合名稱最多 40 字、題目 200 字、各選項 80 字；請填純文字，不使用公式。',
+        '回合名稱最多 40 字、題目 200 字、各選項 80 字；可填數字選項，不使用公式。',
         '每題答對固定 260 分；檔案不超過 2 MiB。',
         '先預覽確認，再發布；開始遊戲後不能修改當場題庫。',
         '建立新場次會沿用已發布題庫，但玩家與分數重新開始。'
@@ -60,3 +60,11 @@ invalid[2][4] = '甲'
 workbook(invalid).save(fixtures/'bank-invalid.xlsx')
 workbook(custom[:3]).save(fixtures/'bank-missing-round.xlsx')
 print('Generated template and local Excel fixtures inside project')
+
+blank = workbook(custom)
+blank['題庫']['H2'] = None
+blank.save(fixtures/'bank-empty-answer.xlsx')
+numeric = workbook(custom)
+for column, number in zip('DEFG', [2023, 2024, 2025, 2026]):
+    numeric['題庫'][column+'2'] = number
+numeric.save(fixtures/'bank-numeric-options.xlsx')

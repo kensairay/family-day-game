@@ -104,7 +104,7 @@ export class GameRoom extends DurableObject {
     if(path==='sessions'&&request.method==='GET') {
       this.authorize('host',token);
       const histories=await this.ctx.storage.list({prefix:'history:'});
-      const sessions=[...histories.entries()].filter(([key])=>key.endsWith(':meta')).map(([,m])=>({id:m.sessionId,title:m.sessionTitle,phase:m.phase,playerCount:m.playerCount,closedAt:m.closedAt}));
+      const sessions=[...histories.entries()].filter(([key])=>key.endsWith(':meta')).map(([,m])=>({id:m.sessionId,title:m.sessionTitle,phase:m.phase,playerCount:m.playerCount,closedAt:m.closedAt,closedVersion:m.version})).sort((a,b)=>a.closedVersion-b.closedVersion);
       sessions.push({id:sessionFor(this.state),title:this.state.sessionTitle || '初始場次',phase:this.state.phase,playerCount:this.state.players.length,current:true});
       return json({sessions});
     }

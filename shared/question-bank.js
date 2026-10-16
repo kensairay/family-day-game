@@ -34,5 +34,10 @@ export function normalizeWorkbookRows(rows) {
  if(!Array.isArray(rows)||!Array.isArray(rows[0])||rows[0].length!==HEADERS.length||rows[0].some((v,i)=>text(v)!==HEADERS[i]))throw new BankValidationError('Excel 欄位不符合範本，請使用下載的題庫範本');
  const data=rows.slice(1).map((cells,i)=>({cells,row:i+2})).filter(({cells})=>cells.some(v=>v!==null&&v!==undefined&&v!==''));
  if(data.some(({cells})=>cells.length>8))throw new BankValidationError('題庫僅接受範本的 8 個欄位');
- return validateBank(data.map(({cells:c,row})=>({sourceRow:row,round:typeof c[0]==='number'?c[0]:Number(text(c[0])),roundName:c[1],text:c[2],options:c.slice(3,7),correct:'ABCD'.indexOf(text(c[7]).toUpperCase())})));
+ return validateBank(data.map(({cells:c,row})=>{
+  const letter=text(c[7]).toUpperCase();
+  return {sourceRow:row,round:typeof c[0]==='number'?c[0]:Number(text(c[0])),roundName:c[1],text:c[2],
+   options:c.slice(3,7).map(value=>typeof value==='number'&&Number.isFinite(value)?String(value):value),
+   correct:/^[ABCD]$/.test(letter)?'ABCD'.indexOf(letter):-1};
+ }));
 }

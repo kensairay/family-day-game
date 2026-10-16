@@ -17,3 +17,11 @@ test('ZIP bounds reject garbage, oversize, forged inflated sizes, and encrypted 
   assert.throws(()=>checkWorkbookZip(buffer));
  }
 });
+
+test('actual Excel blanks are rejected and actual numeric cells are preserved as option text',async()=>{
+ for(const [file,valid] of [['bank-empty-answer.xlsx',false],['bank-numeric-options.xlsx',true]]){
+  const bytes=await readFile('tests/fixtures/'+file),rows=await readSheet(bytes.buffer.slice(bytes.byteOffset,bytes.byteOffset+bytes.byteLength),'題庫');
+  if(valid)assert.deepEqual(normalizeWorkbookRows(rows)[0].options,['2023','2024','2025','2026']);
+  else assert.throws(()=>normalizeWorkbookRows(rows),/驗證/);
+ }
+});

@@ -50,3 +50,16 @@ test('old persisted command fingerprints remain idempotent after upgrade',()=>{
  const record=s.commandRecords[0],old=JSON.parse(record.intent);delete old.title;delete old.bankDigest;record.intent=JSON.stringify(old);
  const version=s.version;assert.equal(command(s,body),null);assert.equal(s.version,version);
 });
+
+test('blank, multi-letter and numeric Excel answers are never silently converted to A',()=>{
+ for(const value of ['',null,undefined,'AB','ABC','BCD',1]){
+  const invalid=rows();invalid[1][7]=value;
+  assert.throws(()=>normalizeWorkbookRows(invalid),e=>e.details?.some(d=>d.row===2&&/正確答案/.test(d.message)));
+ }
+ const valid=rows();valid[1][7]=' b ';assert.equal(normalizeWorkbookRows(valid)[0].correct,1);
+});
+test('Excel numeric options become display text without changing answer semantics',()=>{
+ const input=rows();input[1].splice(3,4,2023,2024,2025,2026);
+ assert.deepEqual(normalizeWorkbookRows(input)[0].options,['2023','2024','2025','2026']);
+ const duplicate=rows();duplicate[1].splice(3,4,0,'0',2,3);assert.throws(()=>normalizeWorkbookRows(duplicate),/驗證/);
+});

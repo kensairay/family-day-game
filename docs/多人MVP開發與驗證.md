@@ -1,8 +1,10 @@
-# 多人 MVP 與控場｜2026-10-15
+# 多人 MVP、題庫與控場｜2026-10-16
 
 ## 規則
 
 一人一機、不分隊。玩家暱稱重複時由伺服器加亂數編號；一題只接受一次答案。主持人公布前只確認收到，不提前判分／公布正解。公布答案即停止收題，答對固定加分、答錯與未作答 0 分。三回合累積個人積分，同分並列，上台決勝另登記最終名次。
+
+新增 import-bank（只允許 waiting）與 new-session（finished 或空 waiting）指令，均帶 commandId／revision 防重複；匯入內容的 SHA-256 由伺服器產生，不信任前端 digest。
 
 控場規則：
 
@@ -13,12 +15,12 @@
 - adjust-score：paused／revealed／skipped／finished 可補扣分；需玩家 ID、非零整數 delta 與理由，記錄 before／delta／after；結果不得為負。已有決勝名次時拒絕。
 - 跳題及補扣分先顯示確認預覽，使用預覽當時的 revision；另一主持人改了進度就拒絕，不自動重套新進度。
 
-此版本不自動倒數。活動節奏由主持人掌握，三回合各三題僅是示範題庫。
+此版本不自動倒數。活動節奏由主持人掌握，內建三回合各三題僅是示範題庫；Excel 可發布三回合各 1～20 題。
 
 ## 資料與 API
 
 - 一個 ROOM_CODE 對應一個 Durable Object。它序列化房間請求，持久化 meta、players、當題 answers 與事件 outbox，寫入成功後才回覆。
-- 更換 ROOM_CODE 建立另一個活動，不清除舊活動。此版本沒有危險的公開重置操作。
+- ROOM_CODE 對應活動服務；同一 DO 內用 sessionId 區分場次。主持人建立新場時，交易內保存舊場題庫／去憑證玩家／答案，再切換新的空場；不刪除舊紀錄。
 - 每次主持人操作帶 commandId 與 revision。重試相同指令不再次執行，過期控制台操作被拒絕；開始／收题／換題的合法階段也由伺服器檢查。
 - 玩家憑證由手機預先產生並保存。加入回覆遺失仍可用原憑證重試，同一玩家不被重建。暱稱不能用來登入或找回身份。
 - 答案帶 questionId，首次接收即鎖定；重送只回覆原收據，不得改答案。收题後未送達的答案不被接受，不承諾離線作答能得分。
@@ -35,7 +37,8 @@
 | GET state?role=screen | 公開只讀投影快照 |
 | POST answer | 玩家送出 questionId、choice |
 | POST host | 主持人送出 action、commandId、revision |
-| GET export | 主持人取得不含憑證的活動紀錄 JSON |
+| GET sessions | 主持人取得過去與目前場次清單 |
+| GET export?sessionId=… | 主持人取得指定場次紀錄，省略參數則目前場次 |
 | GET ws | WebSocket，先驗證角色，之後接收快照 |
 
 只有設定的 ROOM_CODE 可存取。此核心限制 350 玩家與 400 WebSocket，連線中人數為玩家身份去重後的連線數，斷線偵測可能有延遲。
@@ -63,3 +66,12 @@
 5. 用實際 HTTPS 位址重新檢查三種畫面與 QR Code，再做已部署平台的容量測試及活動彩排。
 
 題目只存在 src/questions.js（伺服器 bundle）；舊 prototype 留在 prototype/，不部署至 dist/。repository 若保持公開，正式保密題庫仍不應直接提交到公開 repo；目前題目都是示範。
+
+## Excel 與場次資料
+
+- 正式題庫保存在每場的 DO bank key，不需提交至 Git；舊場 bank 與分數保存為分開的 history keys，避免單一 value 過大。
+- 題庫標準化 JSON 上限 96 KiB；主持人 JSON 請求以串流限制 128 KiB，其他請求仍為 4 KiB。
+- 新場 version／revision 持續遞增，command receipts 不清空；新場題目 ID 帶 sessionId，舊憑證失效、舊答案不能計入新場。
+- 舊版無 sessionId 的資料視為 legacy；既有 D1 事件沒有 sessionId 時仍可在 legacy 歷史匯出。無新增 D1 migration 或 DO binding。
+- 活動事件皆加 sessionId 封存。建立新場不清空 outbox，D1 暫時失敗仍可恢復補寫。
+- .xlsx 原檔僅在主持人的 Web Worker 解析，驗證後只傳題庫 JSON；不載入外部 CDN、不執行 Excel 公式。巨集／加密／.xls 不支援。
