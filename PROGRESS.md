@@ -207,3 +207,13 @@
 - GitHub 發布準備曾受 git pager 污染輸出而解析失敗；改用 git --no-pager 並逐 commit 讀取，核對四個里程碑的本機 tree SHA，避免遺漏提交。此為發布資料準備問題，非測試失敗。
 - 已補上 Windows PowerShell 部署步驟（docs/Excel題庫與場次操作.md），保留使用者本機 D1 ID，使用 --keep-vars 保留線上 ROOM_CODE；不需要 HOST_KEY 重設或 D1 migration。
 - 進行中：發布 feat/question-bank-and-sessions 並核對遠端 tree；下一步須由已登入的使用者電腦執行 wrangler deploy --keep-vars，再驗證新版正式頁面。不得將 GitHub 發布宣稱為正式網站部署完成。
+
+### M9｜GitHub 發布完成；正式網站尚待使用者電腦部署
+
+- 已將五個小提交發布到 GitHub feat/question-bank-and-sessions；發布頭為 2f175ccc8077d9e22ae1c8abbd61f3cd80ca6d4f，逐提交核對 Git tree。遠端 fetch 後完整檔案樹與已驗收本機一致（4f049c24c31e9d5c9312755664e457a443c4fb1e），git diff --exit-code 通過。
+- 發布核對發現 package-lock.json 的 CRLF 會被文字傳輸正規化，已改用 base64 blob 保存原始 bytes；重建後 tree 完全相同。新分支不存在時 update_ref 回覆 422，已改用 create_branch，沒有強制覆寫任何既有遠端分支。
+- 本機以相同檔案樹對齊遠端 GitData 產生的提交中繼資料並設定 upstream，無檔案遺失；後續可正常 fast-forward 續接。
+- 最後補齊 README 發布狀態與明確 fetch refspec，避免只抓取舊分支的 clone 找不到新分支。本段文件更新不變更已驗收程式與 Excel。
+- 完成：Excel／新場次／24 題測試檔發布、9/9 完整本機驗收、Windows 部署操作文件。
+- 卡點：wrangler whoami 未登入；正式 Worker 尚未部署本次更新，亦未執行線上匯入、建立新場或容量測試。
+- 使用方式：在已登入 Cloudflare 的既有專案執行 docs/Excel題庫與場次操作.md 的命令；保留實際 DB ID、ROOM_CODE、HOST_KEY。部署完成後全部裝置重新整理，主持人再匯入 dist/question-bank-test-24.xlsx。

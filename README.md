@@ -122,6 +122,6 @@ npm run test:browser
 
 Cloudflare 佈署準備見 `docs/多人MVP開發與驗證.md`。目前 `database_id` 是本機用 placeholder，正式版需配置實際 D1 ID 與私密 HOST_KEY；不應直接照目前設定上線。既有 `.openai/hosting.json` 僅保留歷史 Sites 設定，不能提供本次 Worker 後端。
 
-開發計畫、實際驗收結果與接手資訊見 `PROGRESS.md`，規則取捨見 `DECISIONS.md`。使用者已授權將控場分支 `feat/event-host-controls` 推送 GitHub；尚未合併 main 或部署網站。請切換此分支取得最新功能。
+開發計畫、實際驗收結果與接手資訊見 `PROGRESS.md`，規則取捨見 `DECISIONS.md`。最新版 Excel 題庫／新場次／24 題測試檔已發布至 GitHub 分支 `feat/question-bank-and-sessions`，尚未合併 main。此工作環境沒有 Cloudflare 登入身分，尚未將這次更新部署到正式網站；請依 `docs/Excel題庫與場次操作.md` 在已登入的電腦部署。
 
 更新到此版本後，所有裝置先重新整理一次載入新介面；此後新場次不需要重新部署。沒有新增 D1 schema 或 Cloudflare binding。可選的 scripts/generate-question-template.py 使用 openpyxl 重新產生範本及示範測試檔；一般部署與驗收直接使用已提交檔案，不需安裝這個 Python 套件。

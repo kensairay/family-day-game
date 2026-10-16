@@ -51,8 +51,8 @@
 在既有專案資料夾開啟 PowerShell，逐行執行；前一步失敗就先停止，不要接著部署：
 
 ```powershell
-git fetch origin
-git switch --track origin/feat/question-bank-and-sessions
+git fetch origin refs/heads/feat/question-bank-and-sessions:refs/remotes/origin/feat/question-bank-and-sessions
+git switch --no-track -c feat/question-bank-and-sessions origin/feat/question-bank-and-sessions
 npm ci
 npm run check
 npx wrangler deploy --keep-vars
