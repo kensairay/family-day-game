@@ -20,9 +20,12 @@
     "pretest:controls:browser": "npm run prepare:assets",
     "acceptance": "node scripts/acceptance.js",
     "test:bank-sessions": "node tests/bank-sessions-integration.js",
-    "pretest:bank-sessions": "npm run prepare:assets"
+    "pretest:bank-sessions": "npm run prepare:assets",
+    "test:bank-sessions:browser": "node tests/bank-sessions-browser.js",
+    "pretest:bank-sessions:browser": "npm run prepare:assets"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "wrangler": "^4.0.0"
   },
   "dependencies": {

@@ -44,3 +44,9 @@ test('new title is required and question answers never leak before reveal',()=>{
  assert.equal(snapshot(s,'screen').question.correct,undefined);assert.equal(snapshot(s,'player').bank,undefined);
  assert.equal(snapshot(s,'host').bankSummary.rounds[0].count,2);
 });
+
+test('old persisted command fingerprints remain idempotent after upgrade',()=>{
+ const s=freshGame();const body={action:'start',commandId:crypto.randomUUID(),revision:0};command(s,body);
+ const record=s.commandRecords[0],old=JSON.parse(record.intent);delete old.title;delete old.bankDigest;record.intent=JSON.stringify(old);
+ const version=s.version;assert.equal(command(s,body),null);assert.equal(s.version,version);
+});

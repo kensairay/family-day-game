@@ -14,6 +14,8 @@ const env={...process.env,CLOUDFLARE_SEND_METRICS:'false',XDG_CONFIG_HOME:join(r
 const npm=process.platform==='win32' ? 'npm.cmd' : 'npm';
 const commands=[
  ['rules',npm,['test']],
+ ['bank-sessions-api',npm,['run','test:bank-sessions']],
+ ['bank-sessions-browser',npm,['run','test:bank-sessions:browser']],
  ['controls-api',npm,['run','test:controls']],
  ['350-players-and-d1-recovery',npm,['run','test:integration']],
  ['existing-browser',npm,['run','test:browser']],

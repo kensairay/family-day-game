@@ -55,7 +55,7 @@ export function command(state, body, now = new Date().toISOString()) {
   const intent = fingerprint(body);
   if (state.commands.includes(body.commandId)) {
     const previous = (state.commandRecords || []).find(record => record.id === body.commandId);
-    if (previous && previous.intent !== intent) throw new GameError('同一操作識別碼不能用於不同內容', 409);
+    if (previous && fingerprint(JSON.parse(previous.intent)) !== intent) throw new GameError('同一操作識別碼不能用於不同內容', 409);
     return null;
   }
   if (body.revision !== state.revision) throw new GameError('進度已更新，請確認最新畫面再操作', 409);

@@ -97,3 +97,10 @@
 - 選擇：使用來源明確、版本鎖定的 read-excel-file，在 Web Worker 解析；限制檔案 2 MiB、ZIP 宣告解壓總量 8 MiB、60 題及解析時限；只送經驗證的題庫 JSON，伺服器再驗證。範本使用現有 openpyxl 產生。
 - 理由：維持免安裝與低流量；Excel 原檔不送到外部服務，不使用第三方 CDN。
 - 替代方案：自己寫完整 Office 格式解析或上傳到雲端轉檔；可維護性／依賴成本較高。
+
+## 2026-10-16｜背景解析工具與驗收檔案
+
+- 問題：Excel 解析要可在手機使用，測試者亦不應需要額外安裝產生範本的工具。
+- 選擇：以現有工具鏈的 esbuild 0.28.2 明確列為 dev dependency，將官方 Excel reader 的 universal 入口包成獨立 Worker，只有主持人選檔才下載；範本與公開示範測試 .xlsx 直接提交。Python 產生器僅供開發者選用。
+- 理由：無第三方 CDN、主執行緒不解析 Office XML、使用者 npm ci 就有可下載範本；不以隱含的 transitive dependency 當穩定 API。
+- 替代方案：所有玩家預載 Excel 工具或要求安裝 Python 生成範本；增加不必要流量／準備成本。

@@ -4,3 +4,7 @@
 #phaseHeading:focus{outline:none}body[data-role=screen] .rank{padding:8px 0}
 
 summary{font-weight:900;font-size:20px;cursor:pointer;min-height:44px;padding:8px 0}summary:focus-visible{outline:3px solid var(--coral);outline-offset:3px}
+
+#bankStatus,#bankPreview p{overflow-wrap:anywhere;white-space:pre-wrap}#bankPreview summary{font-size:16px}input[type=file]{font-size:14px;max-width:100%}
+
+.question,.eyebrow,summary{overflow-wrap:anywhere}

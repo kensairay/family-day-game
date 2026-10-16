@@ -1,5 +1,7 @@
+import {parseWorkbook} from '/question-bank-client.js';
 const $ = id => document.getElementById(id);
 const role = document.body.dataset.role;
+let sessionId='legacy',bankPreview=null,bankParsing=false,historyRequest=0;
 let room, key='', state=null, socket, reconnectTimer, heartbeat, retryDelay=1000, busy=false, authenticated=false;
 let pendingAnswer=null, pendingCommand=null, lastPong=0, storageAvailable=true, actionPreview=null, lastHostPhase=null;
 const playerStorage = () => `family-day:player:${room}`;
@@ -9,7 +11,7 @@ function notice(text) { $('notice').textContent=text; }
 function connection(text, online=false) { $('connection').textContent=text; $('connection').classList.toggle('offline',!online); }
 function saveIdentity() {
   try {
-    if(role==='player') localStorage.setItem(playerStorage(),JSON.stringify({token:key,pending:pendingAnswer}));
+    if(role==='player') localStorage.setItem(playerStorage(),JSON.stringify({token:key,pending:pendingAnswer,sessionId,nickname:state?.me?.name || $('nickname')?.value || ''}));
     if(role==='host') sessionStorage.setItem(hostStorage(),JSON.stringify({token:key,pending:pendingCommand}));
   } catch { storageAvailable=false; notice('此瀏覽器無法保存身份；請保持頁面開啟，避免重新整理。'); }
 }
@@ -28,7 +30,7 @@ async function api(path, body) {
       error.status=response.status >= 500 ? response.status : 503;
       throw error;
     }
-    if(!response.ok) { const error=new Error(value.error || '操作失敗'); error.status=response.status; throw error; }
+    if(!response.ok) { const error=new Error(value.error || '操作失敗'); error.status=response.status;error.details=value.details;error.sessionId=value.sessionId;error.sessionTitle=value.sessionTitle;throw error; }
     return value;
   } catch(error) {
     if(error.name==='AbortError') throw new Error('連線較慢，尚未確認成功，請重試。');
@@ -39,7 +41,13 @@ async function api(path, body) {
 function apply(value) {
   if(state && value.version < state.version) return;
   const oldQuestion=state?.question?.id;
-  state=value;
+  if(state && value.sessionId!==state.sessionId) {
+    actionPreview=null;bankPreview=null;lastHostPhase=null;
+    if($('confirmationPanel'))$('confirmationPanel').hidden=true;
+    if($('bankPreview'))$('bankPreview').replaceChildren();
+    if($('bankStatus'))$('bankStatus').textContent='';
+  }
+  state=value;sessionId=value.sessionId || 'legacy';
   if(role==='player' && pendingAnswer) {
     if(value.me?.answer || value.question?.id !== pendingAnswer.questionId || ['revealed','skipped','finished'].includes(value.phase)) { pendingAnswer=null; saveIdentity(); }
   }
@@ -50,7 +58,11 @@ function apply(value) {
 }
 async function sync() {
   if(!authenticated) return;
-  apply(await api(`state?role=${role}`));
+  try{apply(await api(`state?role=${role}`));}
+  catch(error){
+    if(role==='player' && error.status===401 && error.sessionId && error.sessionId!==sessionId){resetPlayerForSession(error.sessionId,error.sessionTitle);return;}
+    throw error;
+  }
 }
 function closeSocket() {
   clearTimeout(reconnectTimer); clearInterval(heartbeat);
@@ -75,6 +87,7 @@ function connect() {
     if(event.data==='pong') {lastPong=Date.now();return;}
     try {
       const message=JSON.parse(event.data);
+      if(message.type==='session-changed' && role==='player'){resetPlayerForSession(message.sessionId,message.sessionTitle);return;}
       if(message.type==='state') {
         retryDelay=1000; connection('已連線',true); apply(message.state);
         if(role==='player' && pendingAnswer && !busy && state.phase==='open') sendAnswer();
@@ -94,7 +107,7 @@ function connect() {
     const delay=retryDelay+Math.random()*1000; retryDelay=Math.min(retryDelay*2,15000);
     reconnectTimer=setTimeout(async()=> {
       try { await sync(); } catch {}
-      connect();
+      if(authenticated)connect();
     },delay);
   };
   current.onerror=()=>{if(current === socket) current.close();};
@@ -102,13 +115,15 @@ function connect() {
 function setBusy(value) { busy=value; render(); }
 async function sendAnswer() {
   if(!pendingAnswer || busy || state?.phase!=='open') return;
-  setBusy(true);
-  try { apply(await api('answer',pendingAnswer)); notice(''); }
+  const sendingSession=sessionId;setBusy(true);
+  try {const value=await api('answer',pendingAnswer);if(sendingSession!==sessionId)return;apply(value);notice('');}
   catch(error) {
+    if(sendingSession!==sessionId)return;
     notice(error.message);
+    if(error.status===401 && error.sessionId && error.sessionId!==sessionId){resetPlayerForSession(error.sessionId,error.sessionTitle);return;}
     if(error.status===409 || error.status===400) { pendingAnswer=null; saveIdentity(); }
     try { await sync(); } catch {}
-  } finally {setBusy(false);}
+  } finally {if(sendingSession===sessionId)setBusy(false);}
 }
 async function sendCommand() {
   if(!pendingCommand || busy) return;
@@ -116,6 +131,8 @@ async function sendCommand() {
   try {
     const action=pendingCommand.action;
     apply(await api('host',pendingCommand)); pendingCommand=null; saveIdentity();
+    if(action==='import-bank'){bankPreview=null;$('bankPreview').replaceChildren();$('bankStatus').textContent='題庫已發布並保存。';}
+    if(action==='new-session'){await refreshSessions();$('sessionTitle').value='';}
     if(action==='adjust-score') {$('adjustDelta').value='';$('adjustReason').value='';}
     notice(storageAvailable ? '操作已完成' : '操作已完成，但此瀏覽器無法保存身份，請避免重新整理。');
   }
@@ -199,15 +216,15 @@ function playerOptions(id) {
   if([...select.options].some(o=>o.value===selected)) select.value=selected;
 }
 function renderHostControls(q) {
-  if(lastHostPhase===null) $('inviteDetails').open=state.phase==='waiting';
-  else if(lastHostPhase==='waiting' && state.phase!=='waiting') $('inviteDetails').open=false;
+  if(lastHostPhase===null){$('inviteDetails').open=state.phase==='waiting';$('bankPanel').open=state.phase==='waiting';}
+  else if(lastHostPhase==='waiting' && state.phase!=='waiting'){$('inviteDetails').open=false;$('bankPanel').open=false;$('historyPanel').open=false;}
   lastHostPhase=state.phase;
   const locked=busy || Boolean(pendingCommand);
   for(const [id,phases] of [
     ['startBtn',['waiting']],['revealBtn',['open']],['nextBtn',['revealed','skipped']],
     ['pauseBtn',['open']],['resumeBtn',['paused']]
   ]) { $(id).hidden=!phases.includes(state.phase);$(id).disabled=locked; }
-  $('nextBtn').textContent=state.position===state.questionCount ? '結束遊戲並公布排行榜 →' : q?.number===3 ? '開始下一回合 →' : '下一題 →';
+  $('nextBtn').textContent=state.position===state.questionCount ? '結束遊戲並公布排行榜 →' : q?.lastInRound ? '開始下一回合 →' : '下一題 →';
   $('retryHostBtn').hidden=!pendingCommand; $('retryHostBtn').disabled=busy;
   $('retryHostBtn').textContent=busy ? '正在確認上次操作…' : '重試上次操作';
   $('skipPanel').hidden=!['open','paused'].includes(state.phase);
@@ -220,14 +237,56 @@ function renderHostControls(q) {
   $('finalRankPanel').hidden=state.phase!=='finished';$('saveRankBtn').disabled=locked;
   playerOptions('adjustPlayer');playerOptions('finalPlayer');
   $('finalRank').max=state.playerCount;
+  $('sessionLabel').textContent=`目前場次：${state.sessionTitle}`;
+  $('bankSummary').textContent=`目前 ${state.bankSummary.questionCount} 題；`+state.bankSummary.rounds.map(r=>`${r.name} ${r.count} 題`).join('／');
+  $('bankFile').disabled=locked || bankParsing || state.phase!=='waiting';
+  $('publishBankBtn').disabled=locked || bankParsing || !bankPreview || state.phase!=='waiting';
+  $('sessionPanel').hidden=!(state.phase==='finished'||(state.phase==='waiting'&&state.playerCount===0));
+  $('newSessionBtn').disabled=locked || !(state.phase==='finished'||(state.phase==='waiting'&&state.playerCount===0));
+  $('sessionHelp').textContent=$('newSessionBtn').disabled?'請先完成本場，再建立新場次。':'';
 }
-function previewHostAction(action, extra, text) {
+function previewHostAction(action, extra, text, expectedRevision=state?.revision) {
   if(busy || pendingCommand || !state) return;
-  actionPreview={action,commandId:uuid(),revision:state.revision,...extra};
+  actionPreview={action,commandId:uuid(),revision:expectedRevision,...extra};
   $('confirmationText').textContent=text;
   $('confirmationPanel').hidden=false;
   $('confirmActionBtn').focus();
   $('confirmationPanel').scrollIntoView({block:'nearest'});
+}
+function resetPlayerForSession(id,title) {
+  const name=state?.me?.name || $('nickname')?.value || '';
+  closeSocket();authenticated=false;pendingAnswer=null;state=null;busy=false;
+  sessionId=id;key=uuid();$('nickname').value=Array.from(name).slice(0,10).join('');
+  $('gamePanel').hidden=true;$('joinPanel').hidden=false;$('joinBtn').disabled=false;$('joinBtn').textContent='加入新場次 →';
+  saveIdentity();notice(`新場次「${title || '新場次'}」已建立，請確認暱稱後重新加入。`);connection('請加入新場次',true);
+}
+async function refreshSessions() {
+  if(role!=='host'||!authenticated)return;
+  const request=++historyRequest;
+  try {
+    const value=await api('sessions');if(request!==historyRequest)return;
+    const select=$('historySession'),selected=select.value;select.replaceChildren();
+    value.sessions.filter(s=>!s.current).reverse().forEach(s=> {
+      const option=document.createElement('option');option.value=s.id;option.textContent=`${s.title}（${s.playerCount} 人）`;select.append(option);
+    });
+    if([...select.options].some(o=>o.value===selected))select.value=selected;
+    $('historyStatus').textContent=select.options.length?'下載會包含該場題庫、分數與答題紀錄。':'尚無過去場次。';
+    $('downloadHistoryBtn').disabled=!select.options.length;
+    if(select.options.length)$('historyPanel').open=true;
+  } catch(error){$('historyStatus').textContent=error.message;}
+}
+function showBankPreview(bank) {
+  const target=$('bankPreview');target.replaceChildren();
+  for(const round of [1,2,3]) {
+    const questions=bank.filter(q=>q.round===round),details=document.createElement('details'),summary=document.createElement('summary');
+    summary.textContent=`${questions[0].roundName}（${questions.length} 題）`;details.open=true;details.append(summary);
+    for(const q of questions){const p=document.createElement('p');p.textContent=`${q.number}. ${q.text}\n`+q.options.map((option,i)=>`${'ABCD'[i]}：${option}`).join('／')+`\n正確答案：${'ABCD'[q.correct]}`;details.append(p);}
+    target.append(details);
+  }
+}
+async function downloadRecord(path,filename) {
+  const data=await api(path),url=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  const link=document.createElement('a');link.href=url;link.download=filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 function setupInvite() {
   if(!$('joinLink')) return;
@@ -239,12 +298,13 @@ function setupInvite() {
 async function boot() {
   try {
     const response=await fetch('/api/config',{cache:'no-store'}); if(!response.ok) throw new Error();
-    const config=await response.json();room=new URLSearchParams(location.search).get('room') || config.room;
+    const config=await response.json();sessionId=config.sessionId || 'legacy';room=new URLSearchParams(location.search).get('room') || config.room;
     if(room!==config.room) throw new Error('找不到這個活動房間，請重新掃描 QR Code。');
     setupInvite();
     if(role==='player') {
       let saved=null;try{saved=JSON.parse(localStorage.getItem(playerStorage()));}catch{storageAvailable=false;}
-      if(saved?.token) {
+      if(saved?.nickname)$('nickname').value=Array.from(saved.nickname).slice(0,10).join('');
+      if(saved?.token && (saved.sessionId || 'legacy')===sessionId) {
         key=saved.token;pendingAnswer=saved.pending || null;
         try {apply(await api('state?role=player'));authenticated=true;connect();return;}
         catch(error){if(error.status!==401) throw error;}
@@ -254,7 +314,7 @@ async function boot() {
       let saved=null;try{saved=JSON.parse(sessionStorage.getItem(hostStorage()));}catch{storageAvailable=false;}
       if(saved?.token) {
         key=saved.token;pendingCommand=saved.pending || null;
-        try {apply(await api('state?role=host'));authenticated=true;connect();return;}catch(error){if(error.status!==401) throw error;}
+        try {apply(await api('state?role=host'));authenticated=true;connect();refreshSessions();return;}catch(error){if(error.status!==401) throw error;}
       }
       key='';connection('請輸入主持人登入碼',true);
     } else { authenticated=true;apply(await api('state?role=screen'));connect(); }
@@ -267,8 +327,32 @@ $('joinForm')?.addEventListener('submit',async event=> {
 });
 $('loginPanel')?.addEventListener('submit',async event=> {
   event.preventDefault();key=$('hostKey').value;$('loginBtn').disabled=true;
-  try{apply(await api('state?role=host'));authenticated=true;saveIdentity();$('hostKey').value='';connect();notice('');}
+  try{apply(await api('state?role=host'));authenticated=true;saveIdentity();$('hostKey').value='';connect();refreshSessions();notice('');}
   catch(error){notice(error.message);}finally{$('loginBtn').disabled=false;}
+});
+$('bankFile')?.addEventListener('change',async()=> {
+  if(busy || pendingCommand || !state || state.phase!=='waiting')return;
+  bankPreview=null;$('bankPreview').replaceChildren();bankParsing=true;render();
+  const revision=state.revision,parsingSession=sessionId;
+  $('bankStatus').textContent='正在檢查 Excel…';
+  try {
+    const bank=await parseWorkbook($('bankFile').files[0]);
+    if(parsingSession!==sessionId || state.phase!=='waiting')throw new Error('場次或進度已改變，請重新選擇檔案。');
+    bankPreview={bank,revision};showBankPreview(bank);$('bankStatus').textContent=`檢查通過，共 ${bank.length} 題。請預覽後確認發布。`;
+  } catch(error){$('bankStatus').textContent=error.message+(error.details?.length?'：'+error.details.map(d=>`第 ${d.row} 列：${d.message}`).join('；'):'');}
+  finally{bankParsing=false;render();}
+});
+$('publishBankBtn')?.addEventListener('click',()=> {
+  if(!bankPreview)return;
+  previewHostAction('import-bank',{bank:bankPreview.bank},`將以預覽的 ${bankPreview.bank.length} 題取代本場題庫。開始後不能修改，確定發布？`,bankPreview.revision);
+});
+$('sessionPanel')?.addEventListener('submit',event=> {
+  event.preventDefault();previewHostAction('new-session',{title:$('sessionTitle').value.trim()},`建立「${$('sessionTitle').value.trim()}」：保留舊場紀錄與已發布題庫，玩家須重新加入，積分從 0 開始。`);
+});
+$('downloadHistoryBtn')?.addEventListener('click',async()=> {
+  $('downloadHistoryBtn').disabled=true;
+  try{await downloadRecord('export?sessionId='+encodeURIComponent($('historySession').value),`family-day-${room}-${$('historySession').value}.json`);}
+  catch(error){notice(error.message);}finally{$('downloadHistoryBtn').disabled=!$('historySession').value;}
 });
 $('retryBtn')?.addEventListener('click',sendAnswer);
 $('startBtn')?.addEventListener('click',()=>hostAction('start'));
@@ -308,5 +392,5 @@ $('exportBtn')?.addEventListener('click',async()=> {
 });
 window.addEventListener('offline',()=>{closeSocket();connection('目前離線，請保留頁面；恢復網路後會自動重連。');});
 window.addEventListener('online',()=>{if(authenticated)connect();else boot();});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden && authenticated){sync().then(()=>{if(!socket || socket.readyState!==WebSocket.OPEN)connect();else socket.send(JSON.stringify({type:'sync'}));}).catch(()=>connect());}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden && authenticated){sync().then(()=>{if(!authenticated)return;if(!socket || socket.readyState!==WebSocket.OPEN)connect();else socket.send(JSON.stringify({type:'sync'}));}).catch(()=>connect());}});
 boot();

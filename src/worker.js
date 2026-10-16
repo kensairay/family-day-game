@@ -50,7 +50,7 @@ export class GameRoom extends DurableObject {
     return this.serial(async () => {
       try { return await this.handle(request); }
       catch (error) {
-        if (error instanceof GameError || error instanceof BankValidationError) return json({error:error.message,...(error.details?{details:error.details}:{})},error.status);
+        if (error instanceof GameError || error instanceof BankValidationError) return json({error:error.message,...(error.details?{details:error.details}:{}),...(error.status===401?{sessionId:sessionFor(this.state),sessionTitle:this.state.sessionTitle || '初始場次'}:{})},error.status);
         console.error('Room request failed'); return json({error:'服務暫時無法處理，請稍後重試'}, 503);
       }
     });
@@ -58,7 +58,8 @@ export class GameRoom extends DurableObject {
   view(role, player = null) {
     const value = snapshot(this.state, role, player);
     if (role === 'host') {
-      const connected = new Set(this.ctx.getWebSockets().map(ws => ws.deserializeAttachment()).filter(a => a?.role === 'player').map(a => a.playerId));
+      const currentIds=new Set(this.state.players.map(p=>p.id));
+      const connected = new Set(this.ctx.getWebSockets().map(ws => ws.deserializeAttachment()).filter(a => a?.role === 'player'&&currentIds.has(a.playerId)).map(a => a.playerId));
       value.connectedCount = connected.size;
       value.archive = {pending:this.archivePending, error:this.archiveError};
     }
@@ -159,22 +160,24 @@ export class GameRoom extends DurableObject {
       this.progressTimer = null; this.broadcast(['host','screen']);
     }, 500);
   }
+  notifyNewSession(ws){ws.send(JSON.stringify({type:'session-changed',sessionId:sessionFor(this.state),sessionTitle:this.state.sessionTitle || '初始場次'}));ws.close(4001,'請加入新場次');}
   broadcast(roles = ['host','screen','player']) {
     for (const ws of this.ctx.getWebSockets()) {
       try {
         const attachment = ws.deserializeAttachment();
         if (!attachment || !roles.includes(attachment.role)) continue;
         const p = this.state.players.find(p => p.id === attachment.playerId);
-        if(attachment.role==='player'&&!p){ws.send(JSON.stringify({type:'session-changed',sessionId:sessionFor(this.state),sessionTitle:this.state.sessionTitle}));ws.close(4001,'請加入新場次');continue;}
+        if(attachment.role==='player'&&!p){this.notifyNewSession(ws);continue;}
         ws.send(JSON.stringify({type:'state', state:this.view(attachment.role, p)}));
       } catch { try { ws.close(1011, '請重新連線'); } catch {} }
     }
   }
   webSocketMessage(ws, message) {
     return this.serial(async () => {
+      let attemptedRole;
       try {
         if (typeof message !== 'string' || message.length > 4096) throw new GameError('無效訊息');
-        const body = JSON.parse(message), previous = ws.deserializeAttachment();
+        const body = JSON.parse(message), previous = ws.deserializeAttachment();attemptedRole=body.role;
         if (body.type === 'auth' && previous?.role === 'pending') {
           const p = this.authorize(body.role, body.token || '');
           ws.serializeAttachment({role:body.role, playerId:p?.id || null});
@@ -182,9 +185,10 @@ export class GameRoom extends DurableObject {
           this.scheduleProgress();
         } else if (body.type === 'sync' && previous?.role !== 'pending') {
           const p = this.state.players.find(p => p.id === previous.playerId);
+          if(previous.role==='player'&&!p){this.notifyNewSession(ws);return;}
           ws.send(JSON.stringify({type:'state', state:this.view(previous.role, p)}));
         } else throw new GameError('請先登入');
-      } catch { ws.close(1008, '身份驗證失敗，請重新登入'); }
+      } catch(error) {if(error.status===401 && attemptedRole==='player')this.notifyNewSession(ws);else ws.close(1008,'身份驗證失敗，請重新登入');}
     });
   }
   webSocketClose(ws, code) { try { ws.close(code, ''); } catch {} this.scheduleProgress(); }
