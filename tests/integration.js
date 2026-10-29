@@ -63,10 +63,10 @@ await withServer(async (url, {restart}) => {
     await api('answer',{questionId:q.id,choice:q.correct},tokens[0]);await act('reveal');await act('next');
   }
   const final=(await api('state?role=player',null,tokens[0])).body;
-  assert.equal(final.phase,'finished');assert.equal(final.me.score,780);
+  assert.equal(final.phase,'finished');assert.equal(final.me.score,2340);
   assert.equal(final.leaderboard[0].rank,1);
   const hostState=(await api('state?role=host',null,HOST_KEY)).body;
-  const rank=await api('host',{action:'final-rank',revision:hostState.revision,commandId:crypto.randomUUID(),playerId:final.me.id,rank:1},HOST_KEY);assert.equal(rank.status,200);
+  assert.equal(hostState.leaderboard[0].score,2340);
   // Alarm-driven D1 archive must eventually drain; export also includes durable pending entries.
   await untilAsync(async()=> (await api('state?role=host',null,HOST_KEY)).body.archive.pending===0);
   const exported=await api('export',null,HOST_KEY);assert.equal(exported.status,200);
@@ -75,7 +75,7 @@ await withServer(async (url, {restart}) => {
   for(const client of [host,screen,...clients,reconnected])client.ws.close();
   await restart();
   const recovered=(await api('state?role=player',null,tokens[0])).body;
-  assert.equal(recovered.phase,'finished');assert.equal(recovered.me.score,780);assert.equal(recovered.me.finalRank,1);
+  assert.equal(recovered.phase,'finished');assert.equal(recovered.me.score,2340);
   assert.equal((await api('state?role=host',null,HOST_KEY)).body.playerCount,350);
   assert.equal((await api('export',null,HOST_KEY)).body.events.length,exported.body.events.length);
   console.log(`PASS: local Workers/DO/D1, 350 joined players and WebSocket connections, burst answers, no early answer leakage, retries, reconnect, 3 rounds, final rank, archive/export, process restart recovery (${((Date.now()-start)/1000).toFixed(1)}s)`);

@@ -7,7 +7,7 @@ KEY=os.environ['GAME_HOST_KEY']
 ARTIFACTS=Path('.test-artifacts/bank-sessions-browser')
 ARTIFACTS.mkdir(parents=True,exist_ok=True)
 with sync_playwright() as p:
- browser=p.chromium.launch(headless=True)
+ browser=p.chromium.launch(headless=True, executable_path=os.environ.get('GAME_CHROMIUM_PATH'))
  hc=browser.new_context(viewport={'width':390,'height':844})
  pc=browser.new_context(viewport={'width':320,'height':568},is_mobile=True,has_touch=True)
  sc=browser.new_context(viewport={'width':1280,'height':720})
@@ -48,18 +48,36 @@ with sync_playwright() as p:
   host.click('#revealBtn');expect(player.locator('#score')).to_have_text(f'{([1,2,1,1][i])*260} 分')
   if i==0:expect(host.locator('#nextBtn')).to_have_text('下一題 →')
   if i==1:
-   expect(host.locator('#nextBtn')).to_have_text('開始下一回合 →')
+   expect(host.locator('#nextBtn')).to_have_text('進行下一回合 →')
+   expect(player.locator('#feedback')).to_contain_text('答對了')
+   expect(player.locator('.correct')).to_have_count(1)
    expect(screen.locator('#rankPanel')).to_be_visible()
    expect(screen.locator('#rankPanel h2')).to_have_text('第 1 回合排行榜')
    expect(host.locator('#finalRankPanel')).to_be_visible()
+   late_context=browser.new_context(viewport={'width':320,'height':568},is_mobile=True,has_touch=True)
+   late=late_context.new_page();late.goto(BASE);late.fill('#nickname','中途加入');late.click('#joinBtn')
+   expect(late.locator('#phaseHeading')).to_have_text('第 1 回合結束')
+   expect(late.locator('#score')).to_have_text('0 分')
+   assert '中途加入' not in screen.locator('#leaderboard').inner_text()
+   import uuid
+   for number in range(10):
+    joined=host.request.post(BASE+'/api/rooms/family-day/join',data={'token':str(uuid.uuid4()),'nickname':f'來賓{number}'})
+    assert joined.status==200
+  if i==2:
+   expect(late.locator('#phaseHeading')).to_have_text('第 2 回合結束')
+   expect(screen.locator('#leaderboard .rank')).to_have_count(10)
+  if i==3:
+   expect(screen.locator('#rankPanel h2')).to_have_text('第 3 回合排行榜')
+   expect(host.locator('#nextBtn')).to_have_text('顯示累計總分排行榜 →')
   host.click('#nextBtn')
+ expect(screen.locator('#rankPanel h2')).to_have_text('累計總分排行榜')
  expect(player.locator('#phaseHeading')).to_have_text('三回合完成！')
  expect(player.locator('#leaderboard')).to_contain_text('第 1 回合')
  expect(player.locator('#leaderboard')).to_contain_text('第 2 回合')
- expect(player.locator('#scoreLabel')).to_have_text('本回合分數')
+ expect(player.locator('#scoreLabel')).to_have_text('個人累積分數')
  # Cancellation must preserve the finished game.
  host.fill('#sessionTitle','正式家庭日');host.click('#newSessionBtn');host.click('#cancelActionBtn')
- expect(player.locator('#score')).to_have_text('260 分')
+ expect(player.locator('#score')).to_have_text('1040 分')
  offline_ctx.set_offline(True)
  # The first new-session request commits, but its acknowledgment is lost.
  calls=[]

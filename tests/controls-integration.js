@@ -33,12 +33,11 @@ await withServer(async (url,{restart})=>{
  assert.equal((await api('answer',{questionId:'r1q2',choice:1},bToken)).status,409);
  assert.equal((await api('host',{action:'reveal',revision:state.revision,commandId:crypto.randomUUID()})).status,409);
  await act('next');
- for(let i=2;i<9;i++){await act('skip',{reason:'時間調整'});await act('next');}
+ for(let i=2;i<9;i++){await act('skip',{reason:'時間調整'});if(i===8)await act('final-rank',{playerId:a.id,rank:1});await act('next');}
  state=(await api('state?role=host')).body;assert.equal(state.phase,'finished');assert.equal(state.question.correct,undefined);
- await act('final-rank',{playerId:a.id,rank:1});
  state=(await api('state?role=host')).body;
  assert.equal((await api('host',{action:'adjust-score',revision:state.revision,commandId:crypto.randomUUID(),playerId:a.id,delta:260,reason:'過期更正'})).status,409);
- const exported=(await api('export')).body;
+ const exportResponse=await api('export');assert.equal(exportResponse.status,200,JSON.stringify(exportResponse.body));const exported=exportResponse.body;
  const adjustments=exported.events.filter(e=>e.data.action==='adjust-score');
  assert.equal(adjustments.length,2);assert.deepEqual(adjustments.map(e=>[e.data.before,e.data.delta,e.data.after]),[[0,260,260],[520,-260,260]]);
  assert.equal(exported.events.filter(e=>e.data.action==='skip').length,8);

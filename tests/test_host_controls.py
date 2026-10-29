@@ -9,7 +9,7 @@ HOST_KEY = os.environ['GAME_HOST_KEY']
 ARTIFACTS = Path('.test-artifacts/host-controls')
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    browser = p.chromium.launch(headless=True, executable_path=os.environ.get('GAME_CHROMIUM_PATH'))
     main_ctx = browser.new_context(viewport={'width': 390, 'height': 844})
     backup_ctx = browser.new_context()
     a_ctx = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
@@ -118,14 +118,14 @@ with sync_playwright() as p:
         host.fill('#skipReason', '活動時間調整')
         host.click('#requestSkipBtn')
         host.click('#confirmActionBtn')
-        expect(a.locator('#phaseHeading')).to_have_text('本題跳過')
-    host.click('#nextBtn')
-    expect(a.locator('#phaseHeading')).to_have_text('三回合完成！')
-    host.select_option('#finalPlayer', label='甲 · 520 分')
+        expect(a.locator('#phaseHeading')).to_have_text(f'第 {i//3+1} 回合結束' if i % 3 == 2 else '本題跳過')
+    host.select_option('#finalPlayer', label='甲 · 0 分')
     host.fill('#finalRank', '1')
     host.click('#saveRankBtn')
     expect(a.locator('#feedback')).to_contain_text('最終名次：第 1 名')
     expect(host.locator('#previewAdjustmentBtn')).to_be_disabled()
+    host.click('#nextBtn')
+    expect(a.locator('#phaseHeading')).to_have_text('三回合完成！')
     exported = host.request.get(BASE + '/api/rooms/family-day/export', headers={'Authorization': 'Bearer ' + HOST_KEY}).json()
     adjustments = [e for e in exported['events'] if e['data'].get('action') == 'adjust-score']
     assert len(adjustments) == 1

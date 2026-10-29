@@ -27,7 +27,7 @@ export function join(state, {token, nickname}, now = new Date().toISOString()) {
     const random = new Uint32Array(1); crypto.getRandomValues(random);
     name = `${base}-${1000 + random[0] % 9000}`;
   }
-  const player = {id:crypto.randomUUID(), token, name, score:0, finalRank:null};
+  const player = {id:crypto.randomUUID(), token, name, score:0, finalRank:null, joinedAtIndex:state.index+(state.phase === 'round-end' ? 1 : 0)};
   state.players.push(player); state.version++;
   return {kind:'joined', at:now, data:{playerId:player.id, name}};
 }
@@ -87,10 +87,10 @@ export function command(state, body, now = new Date().toISOString()) {
   } else if (action === 'skip') {
     if (!['open','paused'].includes(state.phase)) throw new GameError('只能跳過正在作答或暫停的題目', 409);
     const reason = operationReason(body.reason);
-    state.phase = 'skipped'; state.voided = true;
+    state.phase = state.scoreMode === 'per-round' && questionsFor(state)[state.index+1]?.round !== currentQuestion(state).round ? 'round-end' : 'skipped'; state.voided = true;
     data = {...data, questionId:currentQuestion(state).id, reason};
   } else if (action === 'adjust-score') {
-    if (!['paused','revealed','skipped','finished'].includes(state.phase)) throw new GameError('請先暫停或收題，再調整分數', 409);
+    if (!['paused','revealed','skipped','round-end'].includes(state.phase) && !(state.phase === 'finished' && state.scoreMode !== 'per-round')) throw new GameError('請先暫停或收題，再調整分數', 409);
     if (state.players.some(p => p.finalRank !== null)) throw new GameError('已登記決勝名次，不能再調整積分', 409);
     const player = state.players.find(p => p.id === body.playerId);
     const reason = operationReason(body.reason);
@@ -101,13 +101,14 @@ export function command(state, body, now = new Date().toISOString()) {
     data = {...data, playerId:player.id, before, delta:body.delta, after, reason};
   } else if (action === 'reveal') {
     if (state.phase !== 'open') throw new GameError('目前沒有開放作答的題目', 409);
-    state.phase = 'revealed';
+    state.phase = state.scoreMode === 'per-round' && questionsFor(state)[state.index+1]?.round !== currentQuestion(state).round ? 'round-end' : 'revealed';
     const correct = currentQuestion(state).correct;
     for (const p of state.players) if (state.answers[p.id]?.choice === correct) p.score += POINTS;
     data = {...data, questionId:currentQuestion(state).id, correct, scores:state.players.map(p => ({playerId:p.id, score:p.score}))};
   } else if (action === 'next') {
-    if (!['revealed','skipped'].includes(state.phase)) throw new GameError('請先公布答案或確認跳題', 409);
-    if (state.index === questionsFor(state).length - 1) state.phase = 'finished';
+    if (!['revealed','skipped','round-end'].includes(state.phase)) throw new GameError('請先公布答案或確認跳題', 409);
+    if (state.scoreMode === 'per-round' && questionsFor(state)[state.index+1]?.round !== currentQuestion(state).round && state.phase !== 'round-end') state.phase = 'round-end';
+    else if (state.index === questionsFor(state).length - 1) state.phase = 'finished';
     else {
       const previousRound=currentQuestion(state).round;
       if (state.scoreMode === 'per-round' && questionsFor(state)[state.index+1].round !== previousRound) {
@@ -119,7 +120,7 @@ export function command(state, body, now = new Date().toISOString()) {
       state.index++; state.answers = {}; state.phase = 'open'; state.voided = false;
     }
   } else if (action === 'final-rank') {
-    if (state.phase !== 'finished' && !(state.scoreMode === 'per-round' && ['revealed','skipped'].includes(state.phase) && questionsFor(state)[state.index+1]?.round !== currentQuestion(state).round)) throw new GameError('請在回合結束後登記決勝名次', 409);
+    if (state.scoreMode === 'per-round' ? state.phase !== 'round-end' : state.phase !== 'finished') throw new GameError('請在回合結束後登記決勝名次', 409);
     const player = state.players.find(p => p.id === body.playerId);
     if (!player || !Number.isInteger(body.rank) || body.rank < 1 || body.rank > state.players.length) throw new GameError('請選擇玩家並輸入有效名次');
     if (state.players.some(p => p.id !== player.id && p.finalRank === body.rank)) throw new GameError('這個最終名次已登記給其他玩家');
@@ -133,7 +134,11 @@ export function command(state, body, now = new Date().toISOString()) {
 }
 export function leaderboard(state, round = null) {
   let rank = 0;
-  const players = round === null ? state.players : state.players.map(p => ({...p, score:p.roundResults?.[round]?.score ?? 0, finalRank:p.roundResults?.[round]?.finalRank ?? null}));
+  const endIndex = round === null ? state.index : questionsFor(state).findLastIndex(q => q.round === round);
+  let players = state.players;
+  if (round !== 'total') players = players.filter(p => (p.joinedAtIndex ?? 0) <= endIndex);
+  if (round === 'total') players = players.map(p => ({...p, score:p.score + Object.values(p.roundResults || {}).reduce((sum, result) => sum + result.score, 0), finalRank:null}));
+  else if (round !== null) players = players.map(p => ({...p, score:p.roundResults?.[round]?.score ?? 0, finalRank:p.roundResults?.[round]?.finalRank ?? null}));
   const sorted = [...players].sort((a,b) => b.score - a.score || a.name.localeCompare(b.name,'zh-Hant'));
   const counts = new Map(); sorted.forEach(p => counts.set(p.score, (counts.get(p.score) || 0) + 1));
   return sorted.map((p, i) => {
@@ -143,7 +148,8 @@ export function leaderboard(state, round = null) {
 }
 export function snapshot(state, role = 'screen', player = null) {
   const q = currentQuestion(state);
-  const revealed = ['revealed','finished'].includes(state.phase) && !state.voided;
+  const revealed = ['revealed','round-end','finished'].includes(state.phase) && !state.voided;
+  const total = state.scoreMode === 'per-round' && state.phase === 'finished';
   return {
     version:state.version, revision:state.revision, phase:state.phase, points:POINTS, voided:Boolean(state.voided),
     sessionId:sessionFor(state),sessionTitle:state.sessionTitle || '初始場次', scoreMode:state.scoreMode || 'cumulative',
@@ -155,7 +161,7 @@ export function snapshot(state, role = 'screen', player = null) {
     },
     ...(role === 'host' ? {bankSummary:{questionCount:questionsFor(state).length,rounds:[1,2,3].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
     ...(role !== 'player' ? {playerCount:state.players.length, answeredCount:Object.keys(state.answers).length} : {}),
-    leaderboard:(role === 'host' || revealed || ['skipped','finished'].includes(state.phase)) ? leaderboard(state) : [],
-    ...(player ? {me:{id:player.id, name:player.name, score:player.score, finalRank:player.finalRank, answer:state.answers[player.id] ?? null}} : {})
+    leaderboard:(role === 'host' || revealed || ['skipped','round-end','finished'].includes(state.phase)) ? leaderboard(state,total ? 'total' : null) : [],
+    ...(player ? {me:{id:player.id, name:player.name, score:total ? player.score + Object.values(player.roundResults || {}).reduce((sum, result) => sum + result.score, 0) : player.score, finalRank:total ? null : player.finalRank, answer:state.answers[player.id] ?? null}} : {})
   };
 }

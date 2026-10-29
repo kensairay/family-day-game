@@ -8,7 +8,7 @@ HOST_KEY = os.environ["GAME_HOST_KEY"]
 ARTIFACTS = Path('.test-artifacts/browser')
 ARTIFACTS.mkdir(parents=True, exist_ok=True)
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    browser = p.chromium.launch(headless=True, executable_path=os.environ.get('GAME_CHROMIUM_PATH'))
     host_context = browser.new_context()
     first = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
     second = browser.new_context(viewport={"width": 320, "height": 568}, is_mobile=True, has_touch=True)
@@ -69,13 +69,15 @@ with sync_playwright() as p:
         expect(a.locator("#feedback")).to_contain_text("已收到")
         host.click("#revealBtn")
         expect(a.locator("#score")).to_have_text(f"{(i % 3 + 1) * 260} 分")
-    host.click("#nextBtn")
-    expect(a.locator("#phaseHeading")).to_have_text("三回合完成！")
+    expect(screen.locator("#rankPanel h2")).to_have_text("第 3 回合排行榜")
     host.fill("#finalRank", "1")
     host.click("#saveRankBtn")
     expect(a.locator("#feedback")).to_contain_text("最終名次：第 1 名")
     host.reload()
     expect(host.locator("#finalRankPanel")).to_be_visible()
+    host.click("#nextBtn")
+    expect(a.locator("#phaseHeading")).to_have_text("三回合完成！")
+    expect(screen.locator("#rankPanel h2")).to_have_text("累計總分排行榜")
     for page in [a, b, host, screen]:
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert not errors, errors

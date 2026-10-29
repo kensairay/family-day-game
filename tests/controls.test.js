@@ -28,7 +28,7 @@ test('skip voids current question, stays put, reveals no correct answer, and adv
 });
 test('last question can be skipped without revealing its answer or adding points',()=>{
  const s=setup();for(let i=0;i<QUESTIONS.length-1;i++){act(s,'reveal');act(s,'next');}
- submit(s);act(s,'skip',{reason:'活動時間不足'});assert.equal(s.phase,'skipped');act(s,'next');
+ submit(s);act(s,'skip',{reason:'活動時間不足'});assert.equal(s.phase,'round-end');act(s,'next');
  assert.equal(s.phase,'finished');assert.equal(snapshot(s).question.correct,undefined);assert.equal(s.players[0].score,0);
 });
 test('skip reason required and rejected operation changes nothing',()=>{
@@ -56,7 +56,7 @@ test('same command payload retry is idempotent; reused ID with changed intent is
  assert.throws(()=>command(s,{...cmd,commandId:crypto.randomUUID()}),e=>e.status===409);assert.deepEqual(s,before);
 });
 test('recorded final ranks cannot be made stale by changing scores',()=>{
- const s=setup();for(const q of QUESTIONS){act(s,'reveal');act(s,'next');}
+ const s=setup();for(const q of QUESTIONS){act(s,'reveal');if(q!==QUESTIONS.at(-1))act(s,'next');}
  act(s,'adjust-score',{playerId:s.players[0].id,delta:260,reason:'補分'});
  act(s,'final-rank',{playerId:s.players[0].id,rank:1});const before=structuredClone(s);
  assert.throws(()=>act(s,'adjust-score',{playerId:s.players[1].id,delta:520,reason:'補分'}),/決勝/);assert.deepEqual(s,before);

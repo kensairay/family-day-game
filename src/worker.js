@@ -121,7 +121,7 @@ export class GameRoom extends DurableObject {
       const archived = await this.env.DB.prepare("SELECT event_id, occurred_at, kind, payload FROM game_events WHERE room = ? AND (json_extract(payload, '$.sessionId') = ? OR (? = 'legacy' AND json_extract(payload, '$.sessionId') IS NULL)) ORDER BY event_id").bind(this.env.ROOM_CODE || 'family-day',id,id).all();
       const events = new Map(archived.results.map(row => [row.event_id, {id:row.event_id, at:row.occurred_at, kind:row.kind, data:JSON.parse(row.payload)}]));
       for (const event of (await this.ctx.storage.list({prefix:'outbox:'})).values()) if((event.data.sessionId || 'legacy')===id)events.set(event.id,event);
-      return json({room:this.env.ROOM_CODE || 'family-day',sessionId:id,state:snapshot(source,'host'),bank:questionsFor(source),players:source.players.map(({token:secret,...p}) => p),events:[...events.values()].sort((a,b)=>a.id-b.id)});
+      return json({room:this.env.ROOM_CODE || 'family-day',sessionId:id,state:snapshot(source,'host'),bank:questionsFor(source),players:source.players.map(({token:secret,...p}) => source.scoreMode === 'per-round' ? {...p,totalScore:p.score + Object.values(p.roundResults || {}).reduce((sum,result)=>sum+result.score,0)} : p),events:[...events.values()].sort((a,b)=>a.id-b.id)});
     }
     throw new GameError('找不到這項操作', 404);
   }

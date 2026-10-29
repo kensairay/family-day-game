@@ -50,7 +50,7 @@ function apply(value) {
   }
   state=value;sessionId=value.sessionId || 'legacy';
   if(role==='player' && pendingAnswer) {
-    if(value.me?.answer || value.question?.id !== pendingAnswer.questionId || ['revealed','skipped','finished'].includes(value.phase)) { pendingAnswer=null; saveIdentity(); }
+    if(value.me?.answer || value.question?.id !== pendingAnswer.questionId || ['revealed','skipped','round-end','finished'].includes(value.phase)) { pendingAnswer=null; saveIdentity(); }
   }
   render();
   if(value.question?.id && oldQuestion !== value.question.id) {
@@ -153,10 +153,10 @@ function render() {
   $('gamePanel').hidden=false;
   if($('joinPanel')) $('joinPanel').hidden=true;
   if($('loginPanel')) $('loginPanel').hidden=true;
-  const q=state.question, revealed=['revealed','finished'].includes(state.phase) && !state.voided, ranked=['revealed','skipped','finished'].includes(state.phase), pending=pendingAnswer?.questionId===q?.id;
-  $('phaseHeading').textContent=state.phase==='waiting' ? '準備好了嗎？' : state.phase==='finished' ? '三回合完成！' : state.phase==='paused' ? '遊戲暫停' : state.phase==='skipped' ? '本題跳過' : `第 ${q.number} 題`;
+  const q=state.question, revealed=['revealed','round-end','finished'].includes(state.phase) && !state.voided, ranked=['revealed','skipped','round-end','finished'].includes(state.phase), pending=pendingAnswer?.questionId===q?.id;
+  $('phaseHeading').textContent=state.phase==='waiting' ? '準備好了嗎？' : state.phase==='finished' ? '三回合完成！' : state.phase==='round-end' ? `第 ${q.round} 回合結束` : state.phase==='paused' ? '遊戲暫停' : state.phase==='skipped' ? '本題跳過' : `第 ${q.number} 題`;
   $('roundName').textContent=q?.roundName || '請等待主持人開始';
-  $('question').textContent=state.phase==='finished' ? state.scoreMode==='per-round' ? '謝謝參加，請看各回合排行榜。' : '謝謝參加，請看最終排行榜。' : q?.text || '主持人開始後，題目會同步出現在這裡。';
+  $('question').textContent=state.phase==='finished' ? state.scoreMode==='per-round' ? '謝謝參加，請看累計總分排行榜。' : '謝謝參加，請看最終排行榜。' : q?.text || '主持人開始後，題目會同步出現在這裡。';
   $('answers').replaceChildren();
   if(q && state.phase!=='finished') q.options.forEach((text,index)=> {
     const button=document.createElement('button'); button.className='answer';
@@ -173,15 +173,15 @@ function render() {
     };
     $('answers').append(button);
   });
-  let feedback=state.phase==='waiting' ? '一人一機，答對固定加分，不比作答速度。' : state.phase==='open' ? '等待主持人公布答案。' : state.phase==='paused' ? '遊戲暫停，等待主持人恢復本題。' : state.phase==='skipped' ? '本題跳過，不計分。請等待主持人開始下一題。' : state.phase==='finished' ? '同分並列，請依主持人指示上台決勝。' : `正確答案：${q.options[q.correct]}`;
+  let feedback=state.phase==='waiting' ? '一人一機，答對固定加分，不比作答速度。' : state.phase==='open' ? '等待主持人公布答案。' : state.phase==='paused' ? '遊戲暫停，等待主持人恢復本題。' : state.phase==='skipped' ? '本題跳過，不計分。請等待主持人開始下一題。' : state.phase==='finished' ? '同分並列，請依主持人指示上台決勝。' : state.phase==='round-end' ? (state.voided ? '本題跳過，不計分。本回合已結束，請等待主持人。' : '本回合已結束，請等待主持人。') : `正確答案：${q.options[q.correct]}`;
   if(role==='player') {
     $('identity').textContent=`你的暱稱：${state.me.name}`;
-    $('scoreLabel').textContent=state.scoreMode==='per-round' ? '本回合分數' : '個人累積分數';
+    $('scoreLabel').textContent=state.scoreMode==='per-round' && state.phase!=='finished' ? '本回合分數' : '個人累積分數';
     $('score').textContent=`${state.me.score} 分`;
     $('progress').style.width=`${state.position/state.questionCount*100}%`;
     if(state.phase==='open') feedback=state.me.answer ? '已收到，等待主持人公布答案。' : pending ? busy ? '送出中，等待伺服器確認…' : '尚未確認收到，將嘗試重送。' : '請選擇一個答案，送出後不能更改。';
     if(state.phase==='paused') feedback=state.me.answer ? '遊戲暫停，你的答案已收到並保留。' : pending ? '遊戲暫停，待送答案已保留，恢復後會再送出。' : '遊戲暫停，恢復後可繼續作答。';
-    if(state.phase==='revealed') feedback=(state.me.answer?.choice===q.correct ? `答對了！＋${state.points} 分。` : state.me.answer ? '本題答錯，0 分。' : '本題未作答，0 分。')+` 正確答案：${q.options[q.correct]}`;
+    if(state.phase==='revealed' || (state.phase==='round-end' && !state.voided)) feedback=(state.me.answer?.choice===q.correct ? `答對了！＋${state.points} 分。` : state.me.answer ? '本題答錯，0 分。' : '本題未作答，0 分。')+` 正確答案：${q.options[q.correct]}`+(state.phase==='round-end' ? ' 本回合已結束，請等待主持人。' : '');
     $('retryBtn').hidden=!pending || state.phase!=='open'; $('retryBtn').disabled=busy;
     if(state.me.finalRank) feedback+=` 上台決勝最終名次：第 ${state.me.finalRank} 名。`;
   } else {
@@ -189,8 +189,8 @@ function render() {
     $('answeredCount').textContent=`本題已作答 ${state.answeredCount} 人`;
   }
   $('feedback').textContent=feedback;
-  $('rankPanel').hidden=!ranked || (role==='screen' && state.phase!=='finished' && !(state.scoreMode==='per-round' && q?.lastInRound));
-  const rankHeading=$('rankPanel').querySelector('h2'); if(rankHeading) rankHeading.textContent=state.scoreMode==='per-round' ? `第 ${q?.round || 1} 回合排行榜` : '個人排行榜';
+  $('rankPanel').hidden=!ranked || (role==='screen' && !['round-end','finished'].includes(state.phase));
+  const rankHeading=$('rankPanel').querySelector('h2'); if(rankHeading) rankHeading.textContent=state.scoreMode==='per-round' && state.phase!=='finished' ? `第 ${q?.round || 1} 回合排行榜` : '累計總分排行榜';
   $('leaderboard').replaceChildren();
   const visibleRanks=role==='screen' ? state.leaderboard.slice(0,10) : state.leaderboard;
   for(const entry of visibleRanks) {
@@ -199,7 +199,7 @@ function render() {
     const points=document.createElement('span');points.className='points';points.textContent=`${entry.score} 分`;
     row.append(name,points);$('leaderboard').append(row);
   }
-  if(state.previousRounds?.length) {
+  if(state.previousRounds?.length && role !== 'screen') {
     for(const previous of state.previousRounds) {
       const heading=document.createElement('h3'); heading.textContent=`第 ${previous.round} 回合：${previous.name}`; $('leaderboard').append(heading);
       for(const entry of (role==='screen' ? previous.leaderboard.slice(0,10) : previous.leaderboard)) {
@@ -217,7 +217,7 @@ function render() {
   }
   if(role==='screen') {
     $('invitePanel').hidden=state.phase!=='waiting';
-    $('questionCard').hidden=['waiting','finished'].includes(state.phase);
+    $('questionCard').hidden=['waiting','round-end','finished'].includes(state.phase);
   }
 }
 function playerOptions(id) {
@@ -234,20 +234,20 @@ function renderHostControls(q) {
   lastHostPhase=state.phase;
   const locked=busy || Boolean(pendingCommand);
   for(const [id,phases] of [
-    ['startBtn',['waiting']],['revealBtn',['open']],['nextBtn',['revealed','skipped']],
+    ['startBtn',['waiting']],['revealBtn',['open']],['nextBtn',['revealed','skipped','round-end']],
     ['pauseBtn',['open']],['resumeBtn',['paused']]
   ]) { $(id).hidden=!phases.includes(state.phase);$(id).disabled=locked; }
-  $('nextBtn').textContent=state.position===state.questionCount ? '結束遊戲並公布排行榜 →' : q?.lastInRound ? '開始下一回合 →' : '下一題 →';
+  $('nextBtn').textContent=state.phase==='round-end' ? (state.position===state.questionCount ? '顯示累計總分排行榜 →' : '進行下一回合 →') : state.position===state.questionCount ? '結束遊戲並公布排行榜 →' : q?.lastInRound ? '開始下一回合 →' : '下一題 →';
   $('retryHostBtn').hidden=!pendingCommand; $('retryHostBtn').disabled=busy;
   $('retryHostBtn').textContent=busy ? '正在確認上次操作…' : '重試上次操作';
   $('skipPanel').hidden=!['open','paused'].includes(state.phase);
   $('requestSkipBtn').disabled=locked;
-  $('adjustPanel').hidden=!['paused','revealed','skipped','finished'].includes(state.phase);
+  $('adjustPanel').hidden=!['paused','revealed','skipped','round-end'].includes(state.phase) && !(state.phase==='finished' && state.scoreMode!=='per-round');
   const finalRecorded=state.leaderboard.some(p=>p.finalRank!==null);
   $('previewAdjustmentBtn').disabled=locked || finalRecorded || state.playerCount===0;
   $('adjustHelp').textContent=finalRecorded ? '已登記決勝名次，不能再調整積分，以免已公布結果過期。' : '請在登記決勝名次前修正分數。每次操作會保留理由與前後分數。';
   $('confirmActionBtn').disabled=locked;
-  $('finalRankPanel').hidden=state.phase!=='finished' && !(state.scoreMode==='per-round' && ['revealed','skipped'].includes(state.phase) && q?.lastInRound);$('saveRankBtn').disabled=locked;
+  $('finalRankPanel').hidden=state.scoreMode==='per-round' ? state.phase!=='round-end' : state.phase!=='finished';$('saveRankBtn').disabled=locked;
   playerOptions('adjustPlayer');playerOptions('finalPlayer');
   $('finalRank').max=state.playerCount;
   $('sessionLabel').textContent=`目前場次：${state.sessionTitle}`;
