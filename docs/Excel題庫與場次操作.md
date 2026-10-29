@@ -1,0 +1,65 @@
+# Excel 題庫與場次操作｜2026-10-16
+
+## 準備正式題庫
+
+在主持人控制台下載 `家庭日題庫範本.xlsx`。範本包含九題示例，請替換成正式內容，不要把含正解的正式題庫上傳到公開 GitHub。
+
+使用「題庫」工作表，保留第 1 列與以下欄位順序：
+
+| 欄位 | 填寫方式 |
+|---|---|
+| 回合 | 數字 1、2、3，依序排列 |
+| 回合名稱 | 同一回合填相同名稱，最多 40 字 |
+| 題目 | 必填純文字，最多 200 字 |
+| 選項A～選項D | 文字或一般數字，四格必填、不可重複，各最多 80 字 |
+| 正確答案 | A、B、C 或 D；大小寫皆可 |
+
+三回合各 1～20 題，共 3～60 題；固定答對 260 分，不設定速度加成。請先以三回合各 3～5 題彩排，再依 20 分鐘節奏調整。
+
+只接受 `.xlsx`，檔案不超過 2 MiB；不支援舊 `.xls`、密碼加密及巨集。請以範本填值，不使用公式、圖片或整本大型試算表。一般數字選項會轉成顯示文字；百分比、日期與前導零（如 001）請明確以文字儲存，並在預覽確認。解析在背景進行，ZIP 宣告解壓量限制 8 MiB，逾時會停止並提示。
+
+## 匯入與確認
+
+1. 主持人登入，確認現在是「準備好了嗎」的等待階段。
+2. 選擇 Excel 檔案，檢查錯誤列提示；有錯誤不會改變伺服器題庫。
+3. 檢查三回合完整預覽與正解，再按「預覽發布題庫」。
+4. 按「確認執行」才正式發布；「取消」不修改現有題庫。
+5. 上方顯示目前總題數與各回合題數。重新整理後仍應相同。
+6. 確認題庫後再開始遊戲。開始後不能修改本場題庫，需完成本場後建立新場再換題。
+
+若另一位主持人在預覽期間改變進度，發布會被拒絕；重新選檔並檢查當前場次後再發布，系統不會擅自覆寫。
+
+## 建立新場次
+
+本場完成後，在「建立新場次」輸入例如「正式題庫彩排」或「家庭日正式場」，預覽確認後建立。
+
+- 網址、QR Code、ROOM_CODE 及主持人登入碼不變，不需重新部署。
+- 已確認題庫沿用；若要換題，在新場開始前再次匯入即可。
+- 玩家與分數重新開始。在線玩家會看到新場提示，離線者重連也會提示，需確認暱稱重新加入。
+- 舊場不被刪除；「過去場次紀錄」可選場並下載 JSON，包含該場題庫、分數與操作／答題紀錄。
+- 若建立新場的回覆遺失，使用「重試上次操作」，不會多開第二場。
+- 進行中、暫停中或已有玩家等待的場次不能直接覆蓋；先正常結束本場（需要時可逐題跳過）。
+
+## 更新目前的 Cloudflare 測試站
+
+程式發布至 GitHub 並取得這個版本後，在自己的專案保留原本的 D1 ID、ROOM_CODE 與 Worker 名稱，執行 `npm ci`、`npm run check`，再依授權部署。此功能沒有新增資料庫 migration、binding 或登入碼，不必重設 HOST_KEY。
+
+首次更新後，主持人、投影及手機都先重新整理一次載入新介面。之後每次建立新場不再需要更新程式。請先完成舊彩排再更新，確認舊場可匯出後才開始正式場。
+
+### 在已登入 Cloudflare 的 Windows 電腦部署
+
+在既有專案資料夾開啟 PowerShell，逐行執行；前一步失敗就先停止，不要接著部署：
+
+```powershell
+git fetch origin refs/heads/feat/question-bank-and-sessions:refs/remotes/origin/feat/question-bank-and-sessions
+git switch --no-track -c feat/question-bank-and-sessions origin/feat/question-bank-and-sessions
+npm ci
+npm run check
+npx wrangler deploy --keep-vars
+```
+
+如果已經有本機 `feat/question-bank-and-sessions` 分支，第二行改成 `git switch feat/question-bank-and-sessions`，再執行 `git pull --ff-only origin feat/question-bank-and-sessions`。
+
+切換分支前後都保留自己已設定的 `wrangler.jsonc`；如 Git 提示衝突就停止，勿用強制覆寫。部署前確認 Worker 名稱仍是 `family-day-game`，D1 的 `DB` binding 使用自己的實際 database_id（不可為全零）。`--keep-vars` 保留線上的 ROOM_CODE 等一般變數；既有 HOST_KEY secret 不需重新設定。此更新不需要再跑 D1 migration。
+
+完成後開啟 `https://family-day-game.ompstw.workers.dev/host.html` 並重新整理，確認有題庫匯入與建立新場次控制項。公開測試檔位於 `https://family-day-game.ompstw.workers.dev/question-bank-test-24.xlsx`。在等待中的場次先匯入、預覽 24 題（各回合 8 題），再發布；部署不會自動替換目前場次題庫，也不會自動建立新場。

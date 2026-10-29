@@ -1,0 +1,3 @@
+# Copy to .dev.vars and choose a long, private host key for local preview.
+# Never commit .dev.vars. Production uses a Cloudflare Worker secret.
+HOST_KEY="replace-with-your-own-long-host-key"
