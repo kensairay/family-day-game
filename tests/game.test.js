@@ -39,11 +39,11 @@ test('three rounds, tied ranks, final rank and tokens never in public snapshots'
     answer(s,a,{questionId:q.id,choice:q.correct}); answer(s,b,{questionId:q.id,choice:q.correct});
     act(s,'reveal'); act(s,'next');
   }
-  assert.equal(s.phase,'finished'); assert.equal(a.score,9*POINTS);
+  assert.equal(s.phase,'finished'); assert.equal(a.score,3*POINTS);
   assert.equal(leaderboard(s).filter(p=>p.rank===1 && p.tied).length,2);
   act(s,'final-rank',{playerId:a.id,rank:1});
   assert.throws(()=>act(s,'final-rank',{playerId:b.id,rank:1}),/已登記/);
-  assert.equal(a.score,9*POINTS);
+  assert.equal(a.score,3*POINTS);
   assert.ok(!JSON.stringify(snapshot(s,'screen')).includes(a.token));
   assert.throws(()=>add(s,'too late'),/已結束/);
 });
@@ -54,4 +54,25 @@ test('350 player room capacity and storage value sizes', () => {
   assert.ok(Buffer.byteLength(JSON.stringify(s.players)) < 128*1024);
   assert.ok(Buffer.byteLength(JSON.stringify(s.answers)) < 128*1024);
   act(s,'reveal'); assert.ok(s.players.every(p=>p.score===POINTS));
+});
+
+
+test('round scores and tie-breaks remain independent and survive session history', () => {
+  const s=freshGame(), a=add(s), b=add(s,'小華'); act(s,'start');
+  for (let i=0;i<QUESTIONS.length;i++) {
+    const q=QUESTIONS[i];
+    if(q.round===1 || q.round===3) answer(s,a,{questionId:q.id,choice:q.correct});
+    if(q.round===2) answer(s,b,{questionId:q.id,choice:q.correct});
+    act(s,'reveal');
+    if(i===2) {act(s,'final-rank',{playerId:a.id,rank:1}); assert.throws(()=>act(s,'adjust-score',{playerId:a.id,delta:1,reason:'修正'}));}
+    act(s,'next');
+    if(i===2) {assert.equal(a.score,0);assert.equal(a.finalRank,null);assert.equal(a.roundResults[1].score,780);assert.equal(a.roundResults[1].finalRank,1);}
+  }
+  const view=snapshot(s,'host'); assert.equal(a.score,780); assert.equal(b.score,0);
+  assert.equal(view.previousRounds[0].leaderboard[0].id,a.id);
+  assert.equal(view.previousRounds[1].leaderboard[0].id,b.id);
+  assert.equal(view.previousRounds[0].leaderboard[0].finalRank,1);
+  const legacy=freshGame();delete legacy.scoreMode;const old=add(legacy);act(legacy,'start');
+  for(const q of QUESTIONS){answer(legacy,old,{questionId:q.id,choice:q.correct});act(legacy,'reveal');act(legacy,'next');}
+  assert.equal(old.score,2340);assert.equal(snapshot(legacy).scoreMode,'cumulative');
 });

@@ -68,7 +68,7 @@ with sync_playwright() as p:
             a.locator(".answer").nth(choice).click()
         expect(a.locator("#feedback")).to_contain_text("已收到")
         host.click("#revealBtn")
-        expect(a.locator("#score")).to_have_text(f"{(i + 1) * 260} 分")
+        expect(a.locator("#score")).to_have_text(f"{(i % 3 + 1) * 260} 分")
     host.click("#nextBtn")
     expect(a.locator("#phaseHeading")).to_have_text("三回合完成！")
     host.fill("#finalRank", "1")

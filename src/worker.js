@@ -143,7 +143,7 @@ export class GameRoom extends DurableObject {
       if(event.data.action==='new-session') {
         const previous=this.state,prefix=`history:${sessionFor(previous)}:`;
         await tx.put({
-          [prefix+'meta']:{phase:previous.phase,index:previous.index,voided:previous.voided || false,version:previous.version,revision:previous.revision,sessionId:sessionFor(previous),sessionTitle:previous.sessionTitle || '初始場次',bank:questionsFor(previous),playerCount:previous.players.length,closedAt:event.at},
+          [prefix+'meta']:{phase:previous.phase,index:previous.index,scoreMode:previous.scoreMode,voided:previous.voided || false,version:previous.version,revision:previous.revision,sessionId:sessionFor(previous),sessionTitle:previous.sessionTitle || '初始場次',bank:questionsFor(previous),playerCount:previous.players.length,closedAt:event.at},
           [prefix+'players']:previous.players.map(({token:secret,...p})=>p),[prefix+'answers']:previous.answers
         });
       }

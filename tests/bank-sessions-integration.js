@@ -15,14 +15,14 @@ await withServer(async(url,{restart})=>{
  const open=(await api('state?role=player',null,token)).body;assert.equal(open.question.text,'正式題目1');assert.equal(open.question.correct,undefined);
  const bad={action:'import-bank',commandId:crypto.randomUUID(),revision:open.revision,bank};assert.equal((await api('host',bad)).status,409);
  for(let i=0;i<4;i++){const s=(await api('state?role=player',null,token)).body;assert.equal((await api('answer',{questionId:s.question.id,choice:1},token)).status,200);await act('reveal');await act('next');}
- const old=(await api('state?role=player',null,token)).body;assert.equal(old.me.score,1040);
+ const old=(await api('state?role=player',null,token)).body;assert.equal(old.me.score,260);
  const {cmd,result}=await act('new-session',{title:'正式家庭日'});assert.equal(result.playerCount,0);assert.equal(result.questionCount,4);assert.equal(result.phase,'waiting');
  assert.equal((await api('host',cmd)).body.sessionId,result.sessionId);
  assert.equal((await api('state?role=player',null,token)).status,401);
  await restart();assert.equal((await api('state?role=host')).body.sessionId,result.sessionId);
  assert.equal((await api('sessions',null,token)).status,401);
  const history=(await api('sessions')).body.sessions;assert.equal(history.length,2);
- const exported=await api('export?sessionId=legacy');assert.equal(exported.status,200);assert.equal(exported.body.players[0].score,1040);assert.equal(exported.body.bank.length,4);
+ const exported=await api('export?sessionId=legacy');assert.equal(exported.status,200,JSON.stringify(exported.body));assert.equal(exported.body.players[0].score,260);assert.equal(exported.body.bank.length,4);assert.equal(exported.body.players[0].roundResults[1].score,520);assert.equal(exported.body.players[0].roundResults[2].score,260);assert.equal(exported.body.state.previousRounds.length,2);
  assert.equal(exported.body.events.filter(e=>e.kind==='answered').length,4);assert.ok(!JSON.stringify(exported.body).includes(token));
  const newToken=crypto.randomUUID();await api('join',{token:newToken,nickname:'小明'});await act('start');
  assert.equal((await api('answer',{questionId:old.question.id,choice:1},newToken)).status,409);
