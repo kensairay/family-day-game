@@ -104,8 +104,8 @@ test('round scores and rankings are not sent to players or projection before fin
  act(s,'next');const q=QUESTIONS[3];answer(s,p,{questionId:q.id,choice:q.correct});act(s,'reveal');assert.equal(snapshot(s,'player',p).me.score,1040);
 });
 
-test('projection receives at most 40 final entries and flags ties',()=>{
- const s=freshGame();for(let i=0;i<42;i++)add(s,`玩家${i}`);s.phase='finished';s.index=QUESTIONS.length-1;
- const publicView=snapshot(s,'screen');assert.equal(publicView.leaderboard.length,40);assert.ok(publicView.leaderboard.every(e=>e.tied&&e.rank===1));assert.equal(publicView.previousRounds,undefined);
- assert.equal(snapshot(s,'host').leaderboard.length,42);
+test('projection includes everyone tied at rank 40 and marks ties',()=>{
+ const s=freshGame();for(let i=0;i<45;i++){const p=add(s,`玩家${i}`);p.score=i<39?1000-i: i<43?1:0;}s.phase='finished';s.index=QUESTIONS.length-1;
+ const publicView=snapshot(s,'screen');assert.equal(publicView.leaderboard.length,43);assert.equal(publicView.leaderboard[39].rank,40);assert.ok(publicView.leaderboard.slice(39).every(e=>e.tied&&e.rank===40));assert.equal(publicView.previousRounds,undefined);
+ assert.equal(snapshot(s,'host').leaderboard.length,45);
 });

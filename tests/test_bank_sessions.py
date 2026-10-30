@@ -45,15 +45,14 @@ with sync_playwright() as p:
  for i in range(4):
   expect(player.locator('#question')).to_have_text(f'正式題目{i+1}')
   player.locator('.answer').nth(1).click();expect(player.locator('#feedback')).to_contain_text('已收到')
-  host.click('#revealBtn');expect(player.locator('#score')).to_have_text(f'{([1,2,1,1][i])*260} 分')
+  host.click('#revealBtn');expect(player.locator('#score')).to_have_text(f'{(i+1)*260} 分')
   if i==0:expect(host.locator('#nextBtn')).to_have_text('下一題 →')
   if i==1:
    expect(host.locator('#nextBtn')).to_have_text('進行下一回合 →')
    expect(player.locator('#feedback')).to_contain_text('答對了')
    expect(player.locator('.correct')).to_have_count(1)
-   expect(screen.locator('#rankPanel')).to_be_visible()
-   expect(screen.locator('#rankPanel h2')).to_have_text('第 1 回合排行榜')
-   expect(host.locator('#finalRankPanel')).to_be_visible()
+   expect(screen.locator('#rankPanel')).to_be_hidden()
+   expect(host.locator('#finalRankPanel')).to_be_hidden()
    late_context=browser.new_context(viewport={'width':320,'height':568},is_mobile=True,has_touch=True)
    late=late_context.new_page();late.goto(BASE);late.fill('#nickname','中途加入');late.click('#joinBtn')
    expect(late.locator('#phaseHeading')).to_have_text('第 1 回合結束')
@@ -65,15 +64,16 @@ with sync_playwright() as p:
     assert joined.status==200
   if i==2:
    expect(late.locator('#phaseHeading')).to_have_text('第 2 回合結束')
-   expect(screen.locator('#leaderboard .rank')).to_have_count(10)
+   expect(screen.locator('#rankPanel')).to_be_hidden()
   if i==3:
-   expect(screen.locator('#rankPanel h2')).to_have_text('第 3 回合排行榜')
+   expect(screen.locator('#rankPanel')).to_be_hidden()
    expect(host.locator('#nextBtn')).to_have_text('顯示累計總分排行榜 →')
   host.click('#nextBtn')
  expect(screen.locator('#rankPanel h2')).to_have_text('累計總分排行榜')
- expect(player.locator('#phaseHeading')).to_have_text('三回合完成！')
- expect(player.locator('#leaderboard')).to_contain_text('第 1 回合')
- expect(player.locator('#leaderboard')).to_contain_text('第 2 回合')
+ expect(player.locator('#phaseHeading')).to_have_text('遊戲完成！')
+ expect(host.locator('#leaderboard')).to_contain_text('第 1 回合')
+ expect(host.locator('#leaderboard')).to_contain_text('第 2 回合')
+ assert player.locator('#leaderboard details').count()==0
  expect(player.locator('#scoreLabel')).to_have_text('個人累積分數')
  # Cancellation must preserve the finished game.
  host.fill('#sessionTitle','正式家庭日');host.click('#newSessionBtn');host.click('#cancelActionBtn')

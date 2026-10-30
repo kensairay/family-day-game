@@ -161,7 +161,7 @@ export function snapshot(state, role = 'screen', player = null) {
     },
     ...(role === 'host' ? {bankSummary:{questionCount:questionsFor(state).length,rounds:[...new Set(questionsFor(state).map(q=>q.round))].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
     ...(role !== 'player' ? {playerCount:state.players.length, answeredCount:Object.keys(state.answers).length} : {}),
-    leaderboard:role === 'host' ? leaderboard(state,total ? 'total' : null) : state.phase === 'finished' ? (role === 'screen' ? leaderboard(state,total ? 'total' : null).slice(0,40) : leaderboard(state,total ? 'total' : null)) : [],
+    leaderboard:role === 'host' ? leaderboard(state,total ? 'total' : null) : state.phase === 'finished' ? (role === 'screen' ? leaderboard(state,total ? 'total' : null).filter(entry=>entry.rank<=40) : leaderboard(state,total ? 'total' : null)) : [],
     ...(player ? {me:{id:player.id, name:player.name, score:state.scoreMode === 'per-round' ? player.score + Object.values(player.roundResults || {}).reduce((sum, result) => sum + result.score, 0) : player.score, finalRank:role === 'player' ? null : player.finalRank, answer:state.answers[player.id] ?? null}} : {})
   };
 }

@@ -19,12 +19,12 @@ await withServer(async(url,{restart})=>{
   const s=(await api('state?role=player',null,token)).body;
   assert.equal((await api('answer',{questionId:s.question.id,choice:1},token)).status,200);await act('reveal');
   if(i===1){
-   let breakState=(await api('state?role=screen',null,'')).body;assert.equal(breakState.phase,'round-end');assert.equal(breakState.leaderboard[0].score,520);
+   let breakState=(await api('state?role=screen',null,'')).body;assert.equal(breakState.phase,'round-end');assert.equal(breakState.leaderboard.length,0);
    assert.equal((await api('join',{token:lateToken,nickname:'中途加入'})).status,200);
-   breakState=(await api('state?role=screen',null,'')).body;assert.equal(breakState.leaderboard.length,1);
+   breakState=(await api('state?role=screen',null,'')).body;assert.equal(breakState.leaderboard.length,0);
    await restart();assert.equal((await api('state?role=player',null,lateToken)).body.phase,'round-end');
   }
-  if(i===3){const round=(await api('state?role=screen',null,'')).body;assert.equal(round.phase,'round-end');assert.equal(round.leaderboard[0].score,260);}
+  if(i===3){const round=(await api('state?role=screen',null,'')).body;assert.equal(round.phase,'round-end');assert.equal(round.leaderboard.length,0);}
   await act('next');
  }
  const old=(await api('state?role=player',null,token)).body;assert.equal(old.me.score,1040);
@@ -34,7 +34,7 @@ await withServer(async(url,{restart})=>{
  await restart();assert.equal((await api('state?role=host')).body.sessionId,result.sessionId);
  assert.equal((await api('sessions',null,token)).status,401);
  const history=(await api('sessions')).body.sessions;assert.equal(history.length,2);
- const exported=await api('export?sessionId=legacy');assert.equal(exported.status,200,JSON.stringify(exported.body));assert.equal(exported.body.state.leaderboard[0].score,1040);assert.equal(exported.body.state.previousRounds[0].leaderboard.length,1);assert.equal(exported.body.players[0].score,260);assert.equal(exported.body.players[0].totalScore,1040);assert.equal(exported.body.bank.length,4);assert.equal(exported.body.players[0].roundResults[1].score,520);assert.equal(exported.body.players[0].roundResults[2].score,260);assert.equal(exported.body.state.previousRounds.length,2);
+ const exported=await api('export?sessionId=legacy');assert.equal(exported.status,200,JSON.stringify(exported.body));assert.equal(exported.body.state.leaderboard[0].score,1040);assert.equal(exported.body.state.previousRounds[0].leaderboard.length,1);assert.equal(exported.body.players[0].score,260);assert.equal(exported.body.players[0].totalScore,1040);assert.equal(exported.body.bank.length,4);assert.equal(exported.body.players[0].roundResults[1].score,520);assert.equal(exported.body.players[0].roundResults[2].score,260);assert.equal(exported.body.state.previousRounds.length,3);
  assert.equal(exported.body.events.filter(e=>e.kind==='answered').length,4);assert.ok(!JSON.stringify(exported.body).includes(token));
  const newToken=crypto.randomUUID();await api('join',{token:newToken,nickname:'小明'});await act('start');
  assert.equal((await api('answer',{questionId:old.question.id,choice:1},newToken)).status,409);

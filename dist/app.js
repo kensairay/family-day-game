@@ -192,7 +192,7 @@ function render() {
   $('rankPanel').hidden=state.phase!=='finished';
   const rankHeading=$('rankPanel').querySelector('h2'); if(rankHeading) rankHeading.textContent='累計總分排行榜';
   $('leaderboard').replaceChildren();
-  const visibleRanks=role==='screen' ? state.leaderboard.slice(0,40) : state.leaderboard;
+  const visibleRanks=state.leaderboard;
   for(const entry of visibleRanks) {
     const row=document.createElement('div'); row.className='rank';if(entry.id===state.me?.id) row.classList.add('self');
     const name=document.createElement('span');name.textContent=`${entry.tied?'並列 ':''}第 ${entry.rank} 名 · ${entry.name}${entry.finalRank ? `（上台決勝：第 ${entry.finalRank} 名）` : ''}`;
