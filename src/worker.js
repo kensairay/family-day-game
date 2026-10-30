@@ -1,5 +1,5 @@
 import {DurableObject} from 'cloudflare:workers';
-import {freshGame, join, answer, command, snapshot, getPlayer, GameError, questionsFor, sessionFor} from './game.js';
+import {freshGame, join, answer, command, claimPrize, snapshot, getPlayer, GameError, questionsFor, sessionFor} from './game.js';
 
 import {validateBank,BankValidationError} from '../shared/question-bank.js';
 
@@ -25,7 +25,7 @@ export default {
     }
     if (request.headers.has('Origin') && request.headers.get('Origin') !== url.origin) return json({error:'不接受跨網站請求'}, 403);
     if (url.pathname === '/api/config' && request.method === 'GET') return env.ROOMS.get(env.ROOMS.idFromName(env.ROOM_CODE || 'family-day')).fetch(new Request(new URL('/info',url),request));
-    const match = url.pathname.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/(join|state|answer|host|export|sessions|ws)$/);
+    const match = url.pathname.match(/^\/api\/rooms\/([a-z0-9-]{1,40})\/(join|state|answer|claim|host|export|sessions|ws)$/);
     if (!match || match[1] !== (env.ROOM_CODE || 'family-day')) return json({error:'找不到活動房間'}, 404);
     return env.ROOMS.get(env.ROOMS.idFromName(match[1])).fetch(request);
   }
@@ -92,6 +92,11 @@ export class GameRoom extends DurableObject {
       await this.mutate(s => answer(s, getPlayer(s, token), body), 'progress');
       return json(this.view('player', getPlayer(this.state, player.token)));
     }
+    if (path === 'claim' && request.method === 'POST') {
+      this.authorize('player', token); const body=await readBody(request);
+      await this.mutate(s=>claimPrize(s,getPlayer(s,token),body));
+      return json(this.view('player',getPlayer(this.state,token)));
+    }
     if (path === 'host' && request.method === 'POST') {
       this.authorize('host', token); const body = await readBody(request,128*1024);
       if(body.action==='import-bank') {
@@ -143,7 +148,7 @@ export class GameRoom extends DurableObject {
       if(event.data.action==='new-session') {
         const previous=this.state,prefix=`history:${sessionFor(previous)}:`;
         await tx.put({
-          [prefix+'meta']:{phase:previous.phase,index:previous.index,scoreMode:previous.scoreMode,voided:previous.voided || false,version:previous.version,revision:previous.revision,sessionId:sessionFor(previous),sessionTitle:previous.sessionTitle || '初始場次',bank:questionsFor(previous),playerCount:previous.players.length,closedAt:event.at},
+          [prefix+'meta']:{phase:previous.phase,index:previous.index,scoreMode:previous.scoreMode,voided:previous.voided || false,version:previous.version,revision:previous.revision,sessionId:sessionFor(previous),sessionTitle:previous.sessionTitle || '初始場次',publishedIds:previous.publishedIds || null,bank:questionsFor(previous),playerCount:previous.players.length,closedAt:event.at},
           [prefix+'players']:previous.players.map(({token:secret,...p})=>p),[prefix+'answers']:previous.answers
         });
       }

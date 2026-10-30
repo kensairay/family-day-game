@@ -56,7 +56,7 @@ await withServer(async (url, {restart}) => {
   const duplicate=await api('host',cmd,HOST_KEY);assert.equal(duplicate.status,200);
   await until(()=>clients.every(c=>c.state.me.score===260 && c.state.phase==='revealed'));
   assert.equal((await api('answer',{questionId:'r1q1',choice:0},tokens[0])).body.me.answer.choice,2);
-  assert.equal(clients[0].state.leaderboard.filter(p=>p.rank===1 && p.tied).length,350);
+  assert.equal(clients[0].state.leaderboard.length,0);assert.equal(host.state.leaderboard.filter(p=>p.rank===1 && p.tied).length,350);
   clients[0].ws.close();const reconnected=await connect('player',tokens[0]);assert.equal(reconnected.state.me.score,260);
   await act('next');assert.equal((await api('answer',{questionId:'r1q1',choice:0},tokens[0])).status,409);
   for(const q of QUESTIONS.slice(1)) {
@@ -64,7 +64,7 @@ await withServer(async (url, {restart}) => {
   }
   const final=(await api('state?role=player',null,tokens[0])).body;
   assert.equal(final.phase,'finished');assert.equal(final.me.score,2340);
-  assert.equal(final.leaderboard[0].rank,1);
+  assert.deepEqual(final.leaderboard,[]);
   const hostState=(await api('state?role=host',null,HOST_KEY)).body;
   assert.equal(hostState.leaderboard[0].score,2340);
   // Alarm-driven D1 archive must eventually drain; export also includes durable pending entries.

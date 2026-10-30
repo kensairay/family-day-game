@@ -54,7 +54,7 @@ with sync_playwright() as p:
     expect(b.locator('#score')).to_have_text('260 分')
 
     def preview_adjustment(delta='260'):
-        host.select_option('#adjustPlayer', label='甲 · 260 分')
+        host.select_option('#adjustPlayer', label='甲')
         host.fill('#adjustDelta', delta)
         host.fill('#adjustReason', '現場核對補分')
         host.click('#previewAdjustmentBtn')
@@ -119,13 +119,10 @@ with sync_playwright() as p:
         host.click('#requestSkipBtn')
         host.click('#confirmActionBtn')
         expect(a.locator('#phaseHeading')).to_have_text(f'第 {i//3+1} 回合結束' if i % 3 == 2 else '本題跳過')
-    host.select_option('#finalPlayer', label='甲 · 0 分')
-    host.fill('#finalRank', '1')
-    host.click('#saveRankBtn')
-    expect(a.locator('#feedback')).to_contain_text('最終名次：第 1 名')
-    expect(host.locator('#previewAdjustmentBtn')).to_be_disabled()
+    expect(host.locator('#finalRankPanel')).to_be_hidden()
+    expect(screen.locator('#rankPanel')).to_be_hidden()
     host.click('#nextBtn')
-    expect(a.locator('#phaseHeading')).to_have_text('三回合完成！')
+    expect(a.locator('#phaseHeading')).to_have_text('遊戲完成！')
     exported = host.request.get(BASE + '/api/rooms/family-day/export', headers={'Authorization': 'Bearer ' + HOST_KEY}).json()
     adjustments = [e for e in exported['events'] if e['data'].get('action') == 'adjust-score']
     assert len(adjustments) == 1

@@ -27,17 +27,17 @@ def workbook(rows):
         sheet.row_dimensions[row[0].row].height = 45
         for cell in row:
             cell.alignment = Alignment(wrap_text=True,vertical='center')
-    for column,values in [('A','1,2,3'),('H','A,B,C,D')]:
+    for column,values in [('H','A,B,C,D')]:
         rule = DataValidation(type='list',formula1='"'+values+'"',allow_blank=False)
         rule.showErrorMessage = True
         rule.error = '請使用下拉選單的值'
         sheet.add_data_validation(rule)
-        rule.add(column+'2:'+column+'61')
+        rule.add(column+'2:'+column+'1048576')
     info = book.create_sheet('填寫說明')
     for text in [
         '將「題庫」工作表的示範題目替換為正式內容。',
         '保留第 1 列八個欄位名稱與「題庫」工作表名稱。',
-        '依回合 1、2、3 排列，每回合 1～20 題，同一回合名稱一致。',
+        '依回合正整數順序排列，同一回合名稱一致。',
         '四個選項皆需填寫且不可重複；正確答案填 A、B、C 或 D。',
         '回合名稱最多 40 字、題目 200 字、各選項 80 字；可填數字選項，不使用公式。',
         '每題答對固定 260 分；檔案不超過 2 MiB。',
