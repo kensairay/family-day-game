@@ -154,7 +154,7 @@ function render() {
   if($('joinPanel')) $('joinPanel').hidden=true;
   if($('loginPanel')) $('loginPanel').hidden=true;
   const q=state.question, revealed=['revealed','round-end','finished'].includes(state.phase) && !state.voided, ranked=['revealed','skipped','round-end','finished'].includes(state.phase), pending=pendingAnswer?.questionId===q?.id;
-  $('phaseHeading').textContent=state.phase==='waiting' ? '準備好了嗎？' : state.phase==='finished' ? '三回合完成！' : state.phase==='round-end' ? `第 ${q.round} 回合結束` : state.phase==='paused' ? '遊戲暫停' : state.phase==='skipped' ? '本題跳過' : `第 ${q.number} 題`;
+  $('phaseHeading').textContent=state.phase==='waiting' ? '準備好了嗎？' : state.phase==='finished' ? '遊戲完成！' : state.phase==='round-end' ? `第 ${q.round} 回合結束` : state.phase==='paused' ? '遊戲暫停' : state.phase==='skipped' ? '本題跳過' : `第 ${q.number} 題`;
   $('roundName').textContent=q?.roundName || '請等待主持人開始';
   $('question').textContent=state.phase==='finished' ? state.scoreMode==='per-round' ? '謝謝參加，請看累計總分排行榜。' : '謝謝參加，請看最終排行榜。' : q?.text || '主持人開始後，題目會同步出現在這裡。';
   $('answers').replaceChildren();
@@ -176,7 +176,7 @@ function render() {
   let feedback=state.phase==='waiting' ? '一人一機，答對固定加分，不比作答速度。' : state.phase==='open' ? '等待主持人公布答案。' : state.phase==='paused' ? '遊戲暫停，等待主持人恢復本題。' : state.phase==='skipped' ? '本題跳過，不計分。請等待主持人開始下一題。' : state.phase==='finished' ? '同分並列，請依主持人指示上台決勝。' : state.phase==='round-end' ? (state.voided ? '本題跳過，不計分。本回合已結束，請等待主持人。' : '本回合已結束，請等待主持人。') : `正確答案：${q.options[q.correct]}`;
   if(role==='player') {
     $('identity').textContent=`你的暱稱：${state.me.name}`;
-    $('scoreLabel').textContent=state.scoreMode==='per-round' && state.phase!=='finished' ? '本回合分數' : '個人累積分數';
+    $('scoreLabel').textContent='個人累積分數';
     $('score').textContent=`${state.me.score} 分`;
     $('progress').style.width=`${state.position/state.questionCount*100}%`;
     if(state.phase==='open') feedback=state.me.answer ? '已收到，等待主持人公布答案。' : pending ? busy ? '送出中，等待伺服器確認…' : '尚未確認收到，將嘗試重送。' : '請選擇一個答案，送出後不能更改。';
@@ -189,23 +189,23 @@ function render() {
     $('answeredCount').textContent=`本題已作答 ${state.answeredCount} 人`;
   }
   $('feedback').textContent=feedback;
-  $('rankPanel').hidden=!ranked || (role==='screen' && !['round-end','finished'].includes(state.phase));
-  const rankHeading=$('rankPanel').querySelector('h2'); if(rankHeading) rankHeading.textContent=state.scoreMode==='per-round' && state.phase!=='finished' ? `第 ${q?.round || 1} 回合排行榜` : '累計總分排行榜';
+  $('rankPanel').hidden=state.phase!=='finished';
+  const rankHeading=$('rankPanel').querySelector('h2'); if(rankHeading) rankHeading.textContent='累計總分排行榜';
   $('leaderboard').replaceChildren();
-  const visibleRanks=role==='screen' ? state.leaderboard.slice(0,10) : state.leaderboard;
+  const visibleRanks=role==='screen' ? state.leaderboard.slice(0,40) : state.leaderboard;
   for(const entry of visibleRanks) {
     const row=document.createElement('div'); row.className='rank';if(entry.id===state.me?.id) row.classList.add('self');
     const name=document.createElement('span');name.textContent=`${entry.tied?'並列 ':''}第 ${entry.rank} 名 · ${entry.name}${entry.finalRank ? `（上台決勝：第 ${entry.finalRank} 名）` : ''}`;
     const points=document.createElement('span');points.className='points';points.textContent=`${entry.score} 分`;
     row.append(name,points);$('leaderboard').append(row);
   }
-  if(state.previousRounds?.length && role !== 'screen') {
+  if(state.previousRounds?.length && role === 'host') {
     for(const previous of state.previousRounds) {
-      const heading=document.createElement('h3'); heading.textContent=`第 ${previous.round} 回合：${previous.name}`; $('leaderboard').append(heading);
+      const section=document.createElement('details'), heading=document.createElement('summary'); heading.textContent=`第 ${previous.round} 回合：${previous.name}`; section.append(heading); $('leaderboard').append(section);
       for(const entry of (role==='screen' ? previous.leaderboard.slice(0,10) : previous.leaderboard)) {
         const row=document.createElement('div');row.className='rank';
         const name=document.createElement('span');name.textContent=`${entry.tied?'並列 ':''}第 ${entry.rank} 名 · ${entry.name}${entry.finalRank ? `（上台決勝：第 ${entry.finalRank} 名）` : ''}`;
-        const points=document.createElement('span');points.className='points';points.textContent=`${entry.score} 分`;row.append(name,points);$('leaderboard').append(row);
+        const points=document.createElement('span');points.className='points';points.textContent=`${entry.score} 分`;row.append(name,points);section.append(row);
       }
     }
   }
@@ -223,8 +223,8 @@ function render() {
 function playerOptions(id) {
   const select=$(id), selected=select.value;
   select.replaceChildren();
-  state.leaderboard.forEach(entry=> {
-    const option=document.createElement('option');option.value=entry.id;option.textContent=`${entry.name} · ${entry.score} 分`;select.append(option);
+  [...state.leaderboard].sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')).forEach(entry=> {
+    const option=document.createElement('option');option.value=entry.id;option.textContent=entry.name;select.append(option);
   });
   if([...select.options].some(o=>o.value===selected)) select.value=selected;
 }
@@ -247,7 +247,7 @@ function renderHostControls(q) {
   $('previewAdjustmentBtn').disabled=locked || finalRecorded || state.playerCount===0;
   $('adjustHelp').textContent=finalRecorded ? '已登記決勝名次，不能再調整積分，以免已公布結果過期。' : '請在登記決勝名次前修正分數。每次操作會保留理由與前後分數。';
   $('confirmActionBtn').disabled=locked;
-  $('finalRankPanel').hidden=state.scoreMode==='per-round' ? state.phase!=='round-end' : state.phase!=='finished';$('saveRankBtn').disabled=locked;
+  $('finalRankPanel').hidden=state.scoreMode==='per-round' || state.phase!=='finished';$('saveRankBtn').disabled=locked;
   playerOptions('adjustPlayer');playerOptions('finalPlayer');
   $('finalRank').max=state.playerCount;
   $('sessionLabel').textContent=`目前場次：${state.sessionTitle}`;
@@ -290,7 +290,7 @@ async function refreshSessions() {
 }
 function showBankPreview(bank) {
   const target=$('bankPreview');target.replaceChildren();
-  for(const round of [1,2,3]) {
+  for(const round of [...new Set(bank.map(q=>q.round))]) {
     const questions=bank.filter(q=>q.round===round),details=document.createElement('details'),summary=document.createElement('summary');
     summary.textContent=`${questions[0].roundName}（${questions.length} 題）`;details.open=true;details.append(summary);
     for(const q of questions){const p=document.createElement('p');p.textContent=`${q.number}. ${q.text}\n`+q.options.map((option,i)=>`${'ABCD'[i]}：${option}`).join('／')+`\n正確答案：${'ABCD'[q.correct]}`;details.append(p);}

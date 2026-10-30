@@ -8,3 +8,7 @@ summary{font-weight:900;font-size:20px;cursor:pointer;min-height:44px;padding:8p
 #bankStatus,#bankPreview p{overflow-wrap:anywhere;white-space:pre-wrap}#bankPreview summary{font-size:16px}input[type=file]{font-size:14px;max-width:100%}
 
 .question,.eyebrow,summary{overflow-wrap:anywhere}
+
+body[data-role="host"] .host-controls { position:sticky; top:0; z-index:20; background:#fff; padding:4px 0 12px; }
+
+@media(min-width:800px){body[data-role="screen"] #leaderboard{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));column-gap:18px}body[data-role="screen"] .rank{font-size:clamp(13px,1.3vw,20px);padding:6px 0}}

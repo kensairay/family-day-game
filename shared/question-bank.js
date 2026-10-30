@@ -5,17 +5,17 @@ export class BankValidationError extends Error {
 }
 const text=value=>typeof value==='string'?value.trim():'';
 export function validateBank(input) {
- if(!Array.isArray(input)||input.length<3||input.length>60)throw new BankValidationError('題庫必須包含三回合，共 3～60 題');
- const errors=[],counts=[0,0,0],names=new Map(),bank=[];
- let previous=1;
+ if(!Array.isArray(input)||input.length<1)throw new BankValidationError('題庫至少需要一題');
+ const errors=[],counts=new Map(),names=new Map(),bank=[];
+ let previous=0;
  input.forEach((q,index)=>{
   const row=Number.isInteger(q?.sourceRow)?q.sourceRow:index+2;
   const fail=message=>errors.push({row,message});
   if(!q||typeof q!=='object'){fail('題目格式不正確');return;}
   const round=q.round,roundName=text(q.roundName),question=text(q.text);
-  if(!Number.isInteger(round)||round<1||round>3){fail('回合必須為 1、2 或 3');return;}
-  if(round<previous)fail('請依第一、第二、第三回合順序排列');previous=round;
-  counts[round-1]++;
+  if(!Number.isSafeInteger(round)||round<1){fail('回合必須為正整數');return;}
+  if(round<previous)fail('請依回合順序排列');previous=round;
+  counts.set(round,(counts.get(round)||0)+1);
   if(!roundName||Array.from(roundName).length>40)fail('回合名稱需為 1～40 字');
   if(names.has(round)&&names.get(round)!==roundName)fail('同一回合的名稱必須相同');names.set(round,roundName);
   if(!question||Array.from(question).length>200)fail('題目需為 1～200 字');
@@ -23,10 +23,9 @@ export function validateBank(input) {
   if(options.length!==4||options.some(v=>!v||Array.from(v).length>80))fail('四個選項都需填寫，且各不超過 80 字');
   if(new Set(options.map(v=>v.normalize('NFKC'))).size!==4)fail('同一題的選項不可重複');
   if(!Number.isInteger(q.correct)||q.correct<0||q.correct>3)fail('正確答案必須為 A、B、C 或 D');
-  bank.push({id:`r${round}q${counts[round-1]}`,round,number:counts[round-1],roundName,text:question,options,correct:q.correct});
+  bank.push({id:`r${round}q${counts.get(round)}`,round,number:counts.get(round),roundName,text:question,options,correct:q.correct});
  });
- if(counts.some(n=>n<1||n>20))errors.push({row:1,message:'必須包含三回合，每回合 1～20 題'});
- if(errors.length)throw new BankValidationError('題庫驗證失敗，請修正欄位與三回合內容',errors.slice(0,20));
+ if(errors.length)throw new BankValidationError('題庫驗證失敗，請修正欄位內容',errors.slice(0,20));
  if(new TextEncoder().encode(JSON.stringify(bank)).byteLength>MAX_BANK_BYTES)throw new BankValidationError('題庫文字總量過大，請縮短題目或選項');
  return bank;
 }

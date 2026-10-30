@@ -16,8 +16,8 @@ test('row errors include source row and reject wrong headers, missing rounds, du
  assert.throws(()=>normalizeWorkbookRows([['wrong'],...rows().slice(1)]),/欄位/);
  const invalid=rows();invalid[2][7]='E';invalid[3][4]='甲';
  assert.throws(()=>normalizeWorkbookRows(invalid),e=>e.details.some(x=>x.row===3)&&e.details.some(x=>x.row===4));
- assert.throws(()=>normalizeWorkbookRows(rows().slice(0,4)),/三回合/);
- assert.throws(()=>validateBank(Array.from({length:61},()=>({}))),/60/);
+ assert.equal(normalizeWorkbookRows(rows().slice(0,4)).length,3);
+ assert.equal(normalizeWorkbookRows([header,...Array.from({length:70},(_,i)=>[4,'第四回合',`題目${i}`,'甲','乙','丙','丁','A'])]).length,70);
 });
 test('question bank imports are validated before mutation and locked once started',()=>{
  const s=freshGame();load(s,normalizeWorkbookRows(rows()));const before=structuredClone(s);

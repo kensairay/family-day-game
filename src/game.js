@@ -153,15 +153,15 @@ export function snapshot(state, role = 'screen', player = null) {
   return {
     version:state.version, revision:state.revision, phase:state.phase, points:POINTS, voided:Boolean(state.voided),
     sessionId:sessionFor(state),sessionTitle:state.sessionTitle || '初始場次', scoreMode:state.scoreMode || 'cumulative',
-    ...(state.scoreMode === 'per-round' && ['finished'].includes(state.phase) ? {previousRounds:[...new Set(questionsFor(state).filter(q=>q.round < currentQuestion(state).round).map(q=>q.round))].map(round=>({round,name:questionsFor(state).find(q=>q.round===round).roundName,leaderboard:leaderboard(state,round)}))} : {}),
+    ...(role === 'host' && state.scoreMode === 'per-round' && state.phase === 'finished' ? {previousRounds:[...new Set(questionsFor(state).map(q=>q.round))].map(round=>({round,name:questionsFor(state).find(q=>q.round===round).roundName,leaderboard:round===currentQuestion(state).round ? leaderboard(state) : leaderboard(state,round)}))} : {}),
     roundCount:new Set(questionsFor(state).map(q=>q.round)).size, questionCount:questionsFor(state).length, position:state.index+1,
     question:state.phase === 'waiting' ? null : {
       id:q.id, text:q.text, options:q.options, round:q.round, number:q.number, roundName:q.roundName,lastInRound:questionsFor(state)[state.index+1]?.round!==q.round,
       ...(revealed ? {correct:q.correct} : {})
     },
-    ...(role === 'host' ? {bankSummary:{questionCount:questionsFor(state).length,rounds:[1,2,3].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
+    ...(role === 'host' ? {bankSummary:{questionCount:questionsFor(state).length,rounds:[...new Set(questionsFor(state).map(q=>q.round))].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
     ...(role !== 'player' ? {playerCount:state.players.length, answeredCount:Object.keys(state.answers).length} : {}),
-    leaderboard:(role === 'host' || revealed || ['skipped','round-end','finished'].includes(state.phase)) ? leaderboard(state,total ? 'total' : null) : [],
-    ...(player ? {me:{id:player.id, name:player.name, score:total ? player.score + Object.values(player.roundResults || {}).reduce((sum, result) => sum + result.score, 0) : player.score, finalRank:total ? null : player.finalRank, answer:state.answers[player.id] ?? null}} : {})
+    leaderboard:role === 'host' ? leaderboard(state,total ? 'total' : null) : state.phase === 'finished' ? (role === 'screen' ? leaderboard(state,total ? 'total' : null).slice(0,40) : leaderboard(state,total ? 'total' : null)) : [],
+    ...(player ? {me:{id:player.id, name:player.name, score:state.scoreMode === 'per-round' ? player.score + Object.values(player.roundResults || {}).reduce((sum, result) => sum + result.score, 0) : player.score, finalRank:role === 'player' ? null : player.finalRank, answer:state.answers[player.id] ?? null}} : {})
   };
 }
