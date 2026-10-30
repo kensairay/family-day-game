@@ -74,7 +74,8 @@ with sync_playwright() as p:
     expect(host.locator("#finalRankPanel")).to_be_hidden()
     host.click("#nextBtn")
     expect(a.locator("#phaseHeading")).to_have_text("遊戲完成！")
-    expect(screen.locator("#rankPanel h2")).to_have_text("累計總分排行榜")
+    expect(screen.locator("#rankPanel")).to_be_hidden()
+    expect(host.locator("#publishPanel")).to_be_visible()
     for page in [a, b, host, screen]:
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     assert not errors, errors

@@ -67,9 +67,9 @@ with sync_playwright() as p:
    expect(screen.locator('#rankPanel')).to_be_hidden()
   if i==3:
    expect(screen.locator('#rankPanel')).to_be_hidden()
-   expect(host.locator('#nextBtn')).to_have_text('顯示累計總分排行榜 →')
+   expect(host.locator('#nextBtn')).to_have_text('結束遊戲並確認排行榜 →')
   host.click('#nextBtn')
- expect(screen.locator('#rankPanel h2')).to_have_text('累計總分排行榜')
+ expect(screen.locator('#rankPanel')).to_be_hidden();expect(host.locator('#publishPanel')).to_be_visible()
  expect(player.locator('#phaseHeading')).to_have_text('遊戲完成！')
  expect(host.locator('#leaderboard')).to_contain_text('第 1 回合')
  expect(host.locator('#leaderboard')).to_contain_text('第 2 回合')

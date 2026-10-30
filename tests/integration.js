@@ -64,7 +64,7 @@ await withServer(async (url, {restart}) => {
   }
   const final=(await api('state?role=player',null,tokens[0])).body;
   assert.equal(final.phase,'finished');assert.equal(final.me.score,2340);
-  assert.equal(final.leaderboard[0].rank,1);
+  assert.deepEqual(final.leaderboard,[]);
   const hostState=(await api('state?role=host',null,HOST_KEY)).body;
   assert.equal(hostState.leaderboard[0].score,2340);
   // Alarm-driven D1 archive must eventually drain; export also includes durable pending entries.

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {freshGame, join, answer, command, snapshot, getPlayer, leaderboard} from '../src/game.js';
+import {freshGame, join, answer, command, snapshot, getPlayer, leaderboard, claimPrize} from '../src/game.js';
 import {QUESTIONS, POINTS} from '../src/questions.js';
 const act = (s, action, extra={}) => command(s, {commandId:crypto.randomUUID(), revision:s.revision, action, ...extra});
 function add(s,name='小明') { const token=crypto.randomUUID(); join(s,{token,nickname:name}); return getPlayer(s,token); }
@@ -91,7 +91,7 @@ test('round-end pauses, late join does not change prior ranking, total only afte
  for(let i=3;i<9;i++){const q=QUESTIONS[i];answer(s,late,{questionId:q.id,choice:q.correct});act(s,'reveal');if(i<8)act(s,'next');}
  assert.equal(s.phase,'round-end');assert.equal(snapshot(s,'host').leaderboard[0].score,780);assert.deepEqual(snapshot(s,'screen').leaderboard,[]);
  assert.equal(snapshot(s,'player',late).me.score,1560);assert.equal(snapshot(s,'screen').previousRounds,undefined);
- act(s,'next');const final=snapshot(s,'screen');assert.equal(s.phase,'finished');assert.equal(final.leaderboard[0].id,late.id);assert.equal(final.leaderboard[0].score,1560);assert.equal(final.leaderboard[1].score,780);assert.equal(final.leaderboard[2].score,260);
+ act(s,'next');assert.deepEqual(snapshot(s,'screen').leaderboard,[]);act(s,'publish-ranking',{selectedIds:leaderboard(s,'total').map(p=>p.id)});const final=snapshot(s,'screen');assert.equal(s.phase,'finished');assert.equal(final.leaderboard[0].id,late.id);assert.equal(final.leaderboard[0].score,1560);assert.equal(final.leaderboard[1].score,780);assert.equal(final.leaderboard[2].score,260);
  assert.equal(snapshot(s,'player',late).me.score,1560);assert.equal(snapshot(s,'host').previousRounds[0].leaderboard.length,1);assert.equal(final.previousRounds,undefined);
  assert.throws(()=>add(s,'結束後'),/已結束/);
 });
@@ -104,8 +104,18 @@ test('round scores and rankings are not sent to players or projection before fin
  act(s,'next');const q=QUESTIONS[3];answer(s,p,{questionId:q.id,choice:q.correct});act(s,'reveal');assert.equal(snapshot(s,'player',p).me.score,1040);
 });
 
-test('projection includes everyone tied at rank 40 and marks ties',()=>{
+test('host resolves ties at cutoff before publishing 40; prize names stay private',()=>{
  const s=freshGame();for(let i=0;i<45;i++){const p=add(s,`玩家${i}`);p.score=i<39?1000-i: i<43?1:0;}s.phase='finished';s.index=QUESTIONS.length-1;
- const publicView=snapshot(s,'screen');assert.equal(publicView.leaderboard.length,43);assert.equal(publicView.leaderboard[39].rank,40);assert.ok(publicView.leaderboard.slice(39).every(e=>e.tied&&e.rank===40));assert.equal(publicView.previousRounds,undefined);
- assert.equal(snapshot(s,'host').leaderboard.length,45);
+ const all=leaderboard(s,'total'), chosen=all.slice(0,40).map(p=>p.id), omitted=all[40];
+ assert.equal(all[39].rank,40); assert.equal(all[40].rank,40);
+ assert.deepEqual(snapshot(s,'screen').leaderboard,[]); assert.deepEqual(snapshot(s,'player',s.players[0]).leaderboard,[]);
+ assert.throws(()=>act(s,'publish-ranking',{selectedIds:all.slice(0,41).map(p=>p.id)}),/確認名單/);
+ assert.throws(()=>act(s,'publish-ranking',{selectedIds:all.slice(1,41).map(p=>p.id)}),/確認名單/);
+ act(s,'publish-ranking',{selectedIds:chosen});const view=snapshot(s,'screen');
+ assert.equal(view.leaderboard.length,40);assert.equal(view.leaderboard[39].rank,40);assert.equal(view.leaderboard[39].tied,true);
+ const winner=s.players.find(p=>p.id===chosen[39]), loser=s.players.find(p=>p.id===omitted.id);
+ assert.throws(()=>claimPrize(s,loser,{realName:'不合格'}),/無法登記/);
+ claimPrize(s,winner,{realName:'王小明'});assert.equal(snapshot(s,'host').prizeRoster.find(p=>p.id===winner.id).realName,'王小明');
+ assert.equal(snapshot(s,'player',winner).me.realName,'王小明');assert.ok(!JSON.stringify(snapshot(s,'screen')).includes('王小明'));assert.ok(!JSON.stringify(snapshot(s,'player',loser)).includes('王小明'));
+ assert.throws(()=>act(s,'publish-ranking',{selectedIds:chosen}),/不能發布/);
 });
