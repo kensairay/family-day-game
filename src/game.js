@@ -32,6 +32,15 @@ export function join(state, {token, nickname}, now = new Date().toISOString()) {
   state.players.push(player); state.version++;
   return {kind:'joined', at:now, data:{playerId:player.id, name}};
 }
+function startTimer(state, now) {
+  const seconds=state.roundTimes?.[currentQuestion(state).round] || 0;
+  state.timer=seconds ? {durationMs:seconds*1000,deadline:Date.parse(now)+seconds*1000,pausedRemaining:null} : null;
+}
+function awardAnswers(state) {
+  const correct=currentQuestion(state).correct;
+  for (const p of state.players) if (state.answers[p.id]?.choice===correct) p.score += state.answers[p.id].points ?? POINTS;
+  return correct;
+}
 export function answer(state, player, {questionId, choice}, now = new Date().toISOString()) {
   if (!Number.isInteger(choice) || choice < 0 || choice >= currentQuestion(state).options.length) throw new GameError('請選擇有效答案');
   if (questionId !== currentQuestion(state).id) throw new GameError('題目已切換，請查看目前題目', 409);
@@ -40,7 +49,10 @@ export function answer(state, player, {questionId, choice}, now = new Date().toI
   if (receipt) return null;
   if (state.phase === 'paused') throw new GameError('遊戲暫停，恢復後會重新送出答案', 423);
   if (state.phase !== 'open') throw new GameError('本題已停止收答案', 409);
-  state.answers[player.id] = {choice, receivedAt:now}; state.version++;
+  const remaining=state.timer ? state.timer.deadline-Date.parse(now) : null;
+  if (remaining !== null && remaining <= 0) throw new GameError('作答時間已結束',409);
+  const points=remaining===null ? POINTS : Math.round(POINTS*(0.5+0.5*Math.min(1,remaining/state.timer.durationMs)));
+  state.answers[player.id] = {choice, receivedAt:now, points}; state.version++;
   return {kind:'answered', at:now, data:{playerId:player.id, questionId, choice}};
 }
 function operationReason(value) {
@@ -49,7 +61,7 @@ function operationReason(value) {
 }
 function fingerprint(body) {
   return JSON.stringify({action:body.action, revision:body.revision, playerId:body.playerId ?? null,
-    rank:body.rank ?? null, delta:body.delta ?? null, reason:body.reason ?? null, title:body.title ?? null, bankDigest:body.bankDigest ?? null, selectedIds:body.selectedIds ?? null});
+    rank:body.rank ?? null, delta:body.delta ?? null, reason:body.reason ?? null, title:body.title ?? null, bankDigest:body.bankDigest ?? null, selectedIds:body.selectedIds ?? null, roundTimes:body.roundTimes ?? null});
 }
 export function command(state, body, now = new Date().toISOString()) {
   if (typeof body.commandId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.commandId)) throw new GameError('無效的主持人操作識別碼');
@@ -65,25 +77,32 @@ export function command(state, body, now = new Date().toISOString()) {
   if (action === 'import-bank') {
     if (state.phase !== 'waiting') throw new GameError('遊戲開始後不能修改題庫',409);
     if (typeof body.bankDigest !== 'string' || !/^[0-9a-f]{64}$/.test(body.bankDigest)) throw new GameError('缺少伺服器題庫校驗');
-    state.bank=validateBank(body.bank);state.index=0;
+    state.bank=validateBank(body.bank);state.index=0;state.roundTimes={};
     data={...data,questionCount:state.bank.length,bankDigest:body.bankDigest};
+  } else if (action === 'set-round-times') {
+    if (state.phase !== 'waiting') throw new GameError('遊戲開始後不能變更限時',409);
+    const rounds=[...new Set(questionsFor(state).map(q=>String(q.round)))];
+    if (!body.roundTimes || typeof body.roundTimes!=='object' || Array.isArray(body.roundTimes) || Object.keys(body.roundTimes).length!==rounds.length || rounds.some(r=>!Number.isInteger(body.roundTimes[r]) || body.roundTimes[r]<0 || body.roundTimes[r]>300)) throw new GameError('每回合秒數須為 0 至 300 的整數，0 表示不限時');
+    state.roundTimes=Object.fromEntries(rounds.map(r=>[r,body.roundTimes[r]]));data={...data,roundTimes:state.roundTimes};
   } else if (action === 'new-session') {
     if (state.phase !== 'finished' && !(state.phase==='waiting' && state.players.length===0)) throw new GameError('請先結束本場，再建立新場次',409);
     const title=typeof body.title==='string'?body.title.trim():'';
     if(!title||Array.from(title).length>40)throw new GameError('請填寫 1～40 字的場次名稱');
     const previousSessionId=sessionFor(state),bank=structuredClone(questionsFor(state));
-    Object.assign(state,{phase:'waiting',index:0,players:[],answers:{},voided:false,bank,sessionId:crypto.randomUUID(),sessionTitle:title,sessionCreatedAt:now,scoreMode:'per-round',publishedIds:null});
+    Object.assign(state,{phase:'waiting',index:0,players:[],answers:{},voided:false,bank,sessionId:crypto.randomUUID(),sessionTitle:title,sessionCreatedAt:now,scoreMode:'per-round',publishedIds:null,timer:null,endedEarly:false});
     data={...data,previousSessionId,sessionId:state.sessionId,title};
   } else if (action === 'start') {
     if (state.phase !== 'waiting') throw new GameError('遊戲已開始', 409);
-    state.phase = 'open';
+    state.phase = 'open'; startTimer(state,now);
   } else if (action === 'pause') {
     if (state.phase !== 'open') throw new GameError('只能暫停正在收答案的題目', 409);
+    if(state.timer){state.timer.pausedRemaining=Math.max(0,state.timer.deadline-Date.parse(now));}
     state.phase = 'paused';
     data = {...data, questionId:currentQuestion(state).id};
   } else if (action === 'resume') {
     if (state.phase !== 'paused') throw new GameError('目前沒有暫停中的題目', 409);
     state.phase = 'open';
+    if(state.timer){state.timer.deadline=Date.parse(now)+state.timer.pausedRemaining;state.timer.pausedRemaining=null;}
     data = {...data, questionId:currentQuestion(state).id};
   } else if (action === 'skip') {
     if (!['open','paused'].includes(state.phase)) throw new GameError('只能跳過正在作答或暫停的題目', 409);
@@ -103,8 +122,7 @@ export function command(state, body, now = new Date().toISOString()) {
   } else if (action === 'reveal') {
     if (state.phase !== 'open') throw new GameError('目前沒有開放作答的題目', 409);
     state.phase = state.scoreMode === 'per-round' && questionsFor(state)[state.index+1]?.round !== currentQuestion(state).round ? 'round-end' : 'revealed';
-    const correct = currentQuestion(state).correct;
-    for (const p of state.players) if (state.answers[p.id]?.choice === correct) p.score += POINTS;
+    const correct = awardAnswers(state);
     data = {...data, questionId:currentQuestion(state).id, correct, scores:state.players.map(p => ({playerId:p.id, score:p.score}))};
   } else if (action === 'next') {
     if (!['revealed','skipped','round-end'].includes(state.phase)) throw new GameError('請先公布答案或確認跳題', 409);
@@ -118,8 +136,12 @@ export function command(state, body, now = new Date().toISOString()) {
           p.score=0; p.finalRank=null;
         }
       }
-      state.index++; state.answers = {}; state.phase = 'open'; state.voided = false;
+      state.index++; state.answers = {}; state.phase = 'open'; state.voided = false; startTimer(state,now);
     }
+  } else if (action === 'end-early') {
+    if (!['open','paused','revealed','skipped','round-end'].includes(state.phase)) throw new GameError('目前無法提前結束',409);
+    if (['open','paused'].includes(state.phase)) {const correct=awardAnswers(state);data={...data,questionId:currentQuestion(state).id,correct};}
+    state.phase='finished';state.endedEarly=true;state.timer=null;
   } else if (action === 'publish-ranking') {
     if (state.phase !== 'finished' || state.publishedIds) throw new GameError('目前不能發布排行榜',409);
     const all=leaderboard(state, state.scoreMode === 'per-round' ? 'total' : null);
@@ -168,15 +190,15 @@ export function snapshot(state, role = 'screen', player = null) {
   const revealed = ['revealed','round-end','finished'].includes(state.phase) && !state.voided;
   const total = state.scoreMode === 'per-round' && state.phase === 'finished';
   return {
-    version:state.version, revision:state.revision, phase:state.phase, points:POINTS, voided:Boolean(state.voided),
+    version:state.version, revision:state.revision, phase:state.phase, serverTime:Date.now(), timer:state.timer || null, endedEarly:Boolean(state.endedEarly), points:POINTS, voided:Boolean(state.voided),
     sessionId:sessionFor(state),sessionTitle:state.sessionTitle || '初始場次', scoreMode:state.scoreMode || 'cumulative',
-    ...(role === 'host' && state.scoreMode === 'per-round' && state.phase === 'finished' ? {previousRounds:[...new Set(questionsFor(state).map(q=>q.round))].map(round=>({round,name:questionsFor(state).find(q=>q.round===round).roundName,leaderboard:round===currentQuestion(state).round ? leaderboard(state) : leaderboard(state,round)}))} : {}),
+    ...(role === 'host' && state.scoreMode === 'per-round' && state.phase === 'finished' ? {previousRounds:[...new Set(questionsFor(state).slice(0,state.index+1).map(q=>q.round))].map(round=>({round,name:questionsFor(state).find(q=>q.round===round).roundName,leaderboard:round===currentQuestion(state).round ? leaderboard(state) : leaderboard(state,round)}))} : {}),
     roundCount:new Set(questionsFor(state).map(q=>q.round)).size, questionCount:questionsFor(state).length, position:state.index+1,
     question:state.phase === 'waiting' ? null : {
       id:q.id, text:q.text, options:q.options, round:q.round, number:q.number, roundName:q.roundName,lastInRound:questionsFor(state)[state.index+1]?.round!==q.round,
       ...(revealed ? {correct:q.correct} : {})
     },
-    ...(role === 'host' ? {bankSummary:{questionCount:questionsFor(state).length,rounds:[...new Set(questionsFor(state).map(q=>q.round))].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
+    ...(role === 'host' ? {roundTimes:state.roundTimes || {}, bankSummary:{questionCount:questionsFor(state).length,rounds:[...new Set(questionsFor(state).map(q=>q.round))].map(number=>({number,name:questionsFor(state).find(q=>q.round===number)?.roundName,count:questionsFor(state).filter(q=>q.round===number).length}))}} : {}),
     ...(role !== 'player' ? {playerCount:state.players.length, answeredCount:Object.keys(state.answers).length} : {}),
     rankingPublished:Boolean(state.publishedIds),
     ...(role === 'host' && state.phase === 'finished' ? {prizeRoster:(state.publishedIds || []).map(id=>{const p=state.players.find(p=>p.id===id);return {id,name:p.name,realName:p.realName || ''};})} : {}),

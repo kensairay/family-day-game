@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const role = document.body.dataset.role;
 let sessionId='legacy',bankPreview=null,bankParsing=false,historyRequest=0;
 let room, key='', state=null, socket, reconnectTimer, heartbeat, retryDelay=1000, busy=false, authenticated=false;
-let tieSelection=new Set(), tieKey='', pendingAnswer=null, pendingCommand=null, lastPong=0, storageAvailable=true, actionPreview=null, lastHostPhase=null;
+let clockAnchor=0, serverAnchor=0, timerSettingsKey='', tieSelection=new Set(), tieKey='', pendingAnswer=null, pendingCommand=null, lastPong=0, storageAvailable=true, actionPreview=null, lastHostPhase=null;
 const playerStorage = () => `family-day:player:${room}`;
 const hostStorage = () => `family-day:host:${room}`;
 const uuid = () => '10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
@@ -48,7 +48,7 @@ function apply(value) {
     if($('bankFile'))$('bankFile').value='';
     if($('bankStatus'))$('bankStatus').textContent='';
   }
-  state=value;sessionId=value.sessionId || 'legacy';
+  state=value;sessionId=value.sessionId || 'legacy';serverAnchor=value.serverTime || Date.now();clockAnchor=performance.now();
   if(role==='player' && pendingAnswer) {
     if(value.me?.answer || value.question?.id !== pendingAnswer.questionId || ['revealed','skipped','round-end','finished'].includes(value.phase)) { pendingAnswer=null; saveIdentity(); }
   }
@@ -173,7 +173,7 @@ function render() {
     };
     $('answers').append(button);
   });
-  let feedback=state.phase==='waiting' ? '一人一機，答對固定加分，不比作答速度。' : state.phase==='open' ? '等待主持人公布答案。' : state.phase==='paused' ? '遊戲暫停，等待主持人恢復本題。' : state.phase==='skipped' ? '本題跳過，不計分。請等待主持人開始下一題。' : state.phase==='finished' ? '同分並列，請依主持人指示上台決勝。' : state.phase==='round-end' ? (state.voided ? '本題跳過，不計分。本回合已結束，請等待主持人。' : '本回合已結束，請等待主持人。') : `正確答案：${q.options[q.correct]}`;
+  let feedback=state.phase==='waiting' ? '一人一機，限時題答得越快分數越高。' : state.phase==='open' ? '等待主持人公布答案。' : state.phase==='paused' ? '遊戲暫停，等待主持人恢復本題。' : state.phase==='skipped' ? '本題跳過，不計分。請等待主持人開始下一題。' : state.phase==='finished' ? '同分並列，請依主持人指示上台決勝。' : state.phase==='round-end' ? (state.voided ? '本題跳過，不計分。本回合已結束，請等待主持人。' : '本回合已結束，請等待主持人。') : `正確答案：${q.options[q.correct]}`;
   if(role==='player') {
     $('identity').textContent=`您的姓名：${state.me.name}`;
     const dialog=$('prizeDialog'); if(state.me.prizeEligible && !state.me.realName && !dialog.open) dialog.showModal(); else if((!state.me.prizeEligible || state.me.realName) && dialog.open) dialog.close();
@@ -182,14 +182,14 @@ function render() {
     $('progress').style.width=`${state.position/state.questionCount*100}%`;
     if(state.phase==='open') feedback=state.me.answer ? '已收到，等待主持人公布答案。' : pending ? busy ? '送出中，等待伺服器確認…' : '尚未確認收到，將嘗試重送。' : '請選擇一個答案，送出後不能更改。';
     if(state.phase==='paused') feedback=state.me.answer ? '遊戲暫停，你的答案已收到並保留。' : pending ? '遊戲暫停，待送答案已保留，恢復後會再送出。' : '遊戲暫停，恢復後可繼續作答。';
-    if(state.phase==='revealed' || (state.phase==='round-end' && !state.voided)) feedback=(state.me.answer?.choice===q.correct ? `答對了！＋${state.points} 分。` : state.me.answer ? '本題答錯，0 分。' : '本題未作答，0 分。')+` 正確答案：${q.options[q.correct]}`+(state.phase==='round-end' ? ' 本回合已結束，請等待主持人。' : '');
+    if(state.phase==='revealed' || (state.phase==='round-end' && !state.voided)) feedback=(state.me.answer?.choice===q.correct ? `答對了！＋${state.me.answer?.points ?? state.points} 分。` : state.me.answer ? '本題答錯，0 分。' : '本題未作答，0 分。')+` 正確答案：${q.options[q.correct]}`+(state.phase==='round-end' ? ' 本回合已結束，請等待主持人。' : '');
     $('retryBtn').hidden=!pending || state.phase!=='open'; $('retryBtn').disabled=busy;
     if(state.me.finalRank) feedback+=` 上台決勝最終名次：第 ${state.me.finalRank} 名。`;
   } else {
     $('playerCount').textContent=`已加入 ${state.playerCount} 人`;
     $('answeredCount').textContent=`本題已作答 ${state.answeredCount} 人`;
   }
-  $('feedback').textContent=feedback;
+  $('feedback').textContent=feedback; updateCountdown();
   $('rankPanel').hidden=state.phase!=='finished' || (role!=='host' && !state.rankingPublished);
   const rankHeading=$('rankPanel').querySelector('h2'); if(rankHeading) rankHeading.textContent='累計總分排行榜';
   $('leaderboard').replaceChildren();
@@ -214,6 +214,7 @@ function render() {
     $('connectedCount').textContent=`連線中 ${state.connectedCount} 人`;
     $('archiveStatus').textContent=state.archive.error ? '紀錄封存暫時失敗，遊戲資料已保存在房間，系統會重試。' : state.archive.pending ? `紀錄封存中（${state.archive.pending} 筆待處理）` : '紀錄已封存';
     renderHostControls(q);
+    renderTimerSettings();
     renderPrizeControls();
 
   }
@@ -221,6 +222,23 @@ function render() {
     $('invitePanel').hidden=false;
     $('questionCard').hidden=['waiting','round-end','finished'].includes(state.phase);
   }
+}
+function updateCountdown() {
+  const el=$('countdown');if(!el || !state)return;
+  const timer=state.timer,active=timer && ['open','paused'].includes(state.phase);
+  el.hidden=!active;if(!active)return;
+  const remaining=state.phase==='paused' ? timer.pausedRemaining : Math.max(0,timer.deadline-(serverAnchor+performance.now()-clockAnchor));
+  el.textContent=remaining<=0 ? '作答時間已結束，等待主持人公布答案。' : `剩餘 ${Math.ceil(remaining/1000)} 秒${state.phase==='paused'?'（暫停）':''}`;
+  if(role==='player' && remaining<=0) for(const button of $('answers').querySelectorAll('button'))button.disabled=true;
+}
+setInterval(updateCountdown,250);
+function renderTimerSettings() {
+  const panel=$('timerSettings');panel.hidden=state.phase!=='waiting';
+  $('endEarlyBtn').hidden=['waiting','finished'].includes(state.phase);$('endEarlyBtn').disabled=busy || !!pendingCommand;
+  if(state.phase!=='waiting')return;
+  const key=JSON.stringify([state.sessionId,state.bankSummary.rounds,state.roundTimes]);if(key===timerSettingsKey)return;timerSettingsKey=key;
+  const target=$('roundTimes');target.replaceChildren();
+  for(const round of state.bankSummary.rounds){const label=document.createElement('label');label.textContent=`${round.name}：每題秒數`;const input=document.createElement('input');input.type='number';input.min='0';input.max='300';input.step='1';input.required=true;input.dataset.round=String(round.number);input.value=String(state.roundTimes?.[round.number] ?? 0);label.append(input);target.append(label);}
 }
 function renderPrizeControls() {
   const done=state.phase==='finished', all=state.leaderboard, cutoff=all[39]?.score;
@@ -394,6 +412,8 @@ $('downloadHistoryBtn')?.addEventListener('click',async()=> {
 $('prizeDialog')?.addEventListener('cancel',event=>event.preventDefault());
 $('prizeForm')?.addEventListener('submit',async event=>{event.preventDefault();const button=event.submitter;button.disabled=true;$('prizeError').textContent='';try{apply(await api('claim',{realName:$('realName').value}));}catch(error){$('prizeError').textContent=error.message;}finally{button.disabled=false;}});
 $('publishRankBtn')?.addEventListener('click',()=>{const all=state.leaderboard, candidates=all.filter(p=>p.rank<=40), cutoff=all[39]?.score, required=all.filter(p=>p.rank<=40 && (all.length<=40 || p.score>cutoff)), remaining=Math.min(40,all.length)-required.length, tied=candidates.filter(p=>!required.some(r=>r.id===p.id));const chosen=tied.length>remaining ? [...tieSelection] : tied.map(p=>p.id);previewHostAction('publish-ranking',{selectedIds:[...required.map(p=>p.id),...chosen]},`確認發布 ${required.length+chosen.length} 人的最終排行榜，並通知名單內玩家登記真實姓名？`);});
+$('timerSettings')?.addEventListener('submit',event=>{event.preventDefault();const roundTimes=Object.fromEntries([...$('roundTimes').querySelectorAll('input')].map(input=>[input.dataset.round,Number(input.value)]));hostAction('set-round-times',{roundTimes});});
+$('endEarlyBtn')?.addEventListener('click',()=>previewHostAction('end-early',{},'確定提前終止遊戲？目前題目已收到的正確答案將計分，已完成的成績會保留，之後可確認並發布總排行。'));
 $('retryBtn')?.addEventListener('click',sendAnswer);
 $('startBtn')?.addEventListener('click',()=>hostAction('start'));
 $('revealBtn')?.addEventListener('click',()=>hostAction('reveal'));
